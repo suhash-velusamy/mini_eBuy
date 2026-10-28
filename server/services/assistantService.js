@@ -92,7 +92,7 @@ async function executeSearchAuctions(args) {
 
   if (query && query.trim()) {
     const qReg = new RegExp(query.trim(), 'i');
-    const queryCond = { $or: [{ title: qReg }, { description: qReg }] };
+    const queryCond = { $or: [{ title: qReg }, { description: qReg }, { category: qReg }] };
     if (filter.$or) {
       filter.$and = [{ $or: filter.$or }, queryCond];
       delete filter.$or;
@@ -226,6 +226,63 @@ async function executeProposeBid(userId, args) {
 }
 
 /**
+ * Helper to parse natural language search queries and extract budget / keywords / synonyms
+ */
+function parseSearchQuery(rawText) {
+  let cleaned = (rawText || '').toLowerCase();
+
+  // 1. Extract max price: "under ₹?(\d+)", "below ₹?(\d+)", "less than ₹?(\d+)", "under (\d+)"
+  let maxPrice = null;
+  const priceMatch = cleaned.match(/(?:under|below|less than|within|up to|max(?:imum)?)\s*₹?\s*(\d+)/i);
+  if (priceMatch) {
+    maxPrice = parseFloat(priceMatch[1]);
+  }
+
+  // 2. Remove price clauses from text
+  cleaned = cleaned.replace(/(?:under|below|less than|within|up to|max(?:imum)?)\s*₹?\s*\d+/gi, ' ');
+
+  // 3. Remove punctuation and quotes
+  cleaned = cleaned.replace(/["'’“”?,.!;:()]/g, ' ');
+
+  // 4. Filter stop words
+  const stopWords = new Set([
+    'find', 'show', 'me', 'search', 'get', 'looking', 'look', 'for', 'want', 'need', 'any',
+    'a', 'an', 'the', 'in', 'on', 'at', 'to', 'of', 'and', 'or', 'with', 'available', 'active',
+    'listings', 'items', 'item', 'campus', 'college', 'can', 'you', 'please', 'i', 'im', 'give'
+  ]);
+
+  const tokens = cleaned
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 2 && !stopWords.has(t));
+
+  // 5. Synonym expansion for common campus goods
+  const synonyms = [];
+  tokens.forEach((tok) => {
+    if (/calc|scientific|ti-?84|casio/i.test(tok)) {
+      synonyms.push('calculator', 'scientific', 'ti-84', 'casio');
+    } else if (/book|textbook|algo|clrs|edition|study/i.test(tok)) {
+      synonyms.push('book', 'textbook', 'clrs', 'algorithm', 'edition');
+    } else if (/cycle|bike|bicycle/i.test(tok)) {
+      synonyms.push('cycle', 'bicycle', 'bike', 'hero', 'sprint');
+    } else if (/laptop|pc|computer|dell|inspiron/i.test(tok)) {
+      synonyms.push('laptop', 'dell', 'inspiron', 'ram');
+    } else if (/racket|racquet|badminton|yonex/i.test(tok)) {
+      synonyms.push('racket', 'badminton', 'yonex');
+    } else {
+      synonyms.push(tok);
+    }
+  });
+
+  const queryTerms = Array.from(new Set([...tokens, ...synonyms]));
+  return {
+    tokens,
+    queryRegexStr: queryTerms.length > 0 ? queryTerms.join('|') : '',
+    maxPrice,
+  };
+}
+
+/**
  * Mock dispatcher for testing or environments where ANTHROPIC_API_KEY is not set
  */
 async function executeMockAssistant(userId, userMessage) {
@@ -239,19 +296,18 @@ async function executeMockAssistant(userId, userMessage) {
     };
   }
 
-  // Propose bid intent: "bid for me up to" or "bid up to"
-  const bidMatch = text.match(/bid.*?(?:up to|for me.*?up to|for)\s*₹?\s*(\d+)/i);
-  if (bidMatch) {
+  // Propose bid intent: "bid for me up to" or "bid up to" or "bid 1000 on ..."
+  const bidMatch = text.match(/bid.*?(?:up to|for me.*?up to|for)?\s*₹?\s*(\d+)/i);
+  if (bidMatch && (text.includes('bid') || text.includes('ceiling') || text.includes('auto-bid') || text.includes('autobid'))) {
     const maxINR = parseFloat(bidMatch[1]);
-    // Find first active item matching keywords or any active item
-    const words = text.replace(/bid.*$/, '').replace(/[^\w\s]/g, ' ').split(/\s+/).filter((w) => w.length > 2);
+    const parsed = parseSearchQuery(text.replace(/bid.*?(?:up to|for me.*?up to|for)?\s*₹?\s*\d+/i, ' '));
     let targetItem = null;
-    if (words.length > 0) {
-      const qReg = new RegExp(words.join('|'), 'i');
+    if (parsed.queryRegexStr) {
+      const qReg = new RegExp(parsed.queryRegexStr, 'i');
       targetItem = await Item.findOne({
         status: 'Active',
         closingAt: { $gt: new Date() },
-        $or: [{ title: qReg }, { category: qReg }],
+        $or: [{ title: qReg }, { category: qReg }, { description: qReg }],
       });
     }
     if (!targetItem) {
@@ -262,7 +318,7 @@ async function executeMockAssistant(userId, userMessage) {
       const propResult = await executeProposeBid(userId, { itemId: targetItem._id.toString(), maxAmount: maxINR });
       if (propResult.pendingActionId) {
         return {
-          reply: `I have prepared a proposal to auto-bid up to ₹${maxINR} on [${targetItem.title}](/auctions/${targetItem._id}). Please review the details below and click **Confirm** to activate it.`,
+          reply: `I have prepared a proposal to auto-bid up to ₹${maxINR.toLocaleString('en-IN')} on [${targetItem.title}](/auctions/${targetItem._id}). Please review the details below and click **Confirm** to activate it.`,
           pendingAction: propResult,
         };
       } else {
@@ -274,21 +330,67 @@ async function executeMockAssistant(userId, userMessage) {
     }
   }
 
-  // Search intent
-  const searchResults = await executeSearchAuctions({ query: text });
-  if (searchResults.length === 0) {
+  // Search intent with natural language parser
+  const parsedSearch = parseSearchQuery(text);
+  const searchResults = await executeSearchAuctions({
+    query: parsedSearch.queryRegexStr || text,
+    maxPrice: parsedSearch.maxPrice,
+  });
+
+  if (searchResults.length > 0) {
+    const itemsList = searchResults
+      .map(
+        (it) =>
+          `• [${it.title}](/auctions/${it.id}) — Current price: ₹${it.currentPriceINR.toLocaleString('en-IN')} (${it.condition}, ${it.bidCount} bids)`
+      )
+      .join('\n');
+
     return {
-      reply: `I couldn't find any active listings matching your search right now. You can try adjusting your keywords or use **Saved Wants** to receive an alert when a matching item is posted!`,
+      reply: `Here are the active campus listings matching your search:\n\n${itemsList}\n\nWould you like me to prepare an automatic bid ceiling for any of these items?`,
       pendingAction: null,
     };
   }
 
-  const itemsList = searchResults
-    .map((it) => `• [${it.title}](/auctions/${it.id}) - Current price: ₹${it.currentPriceINR} (${it.condition}, ${it.bidCount} bids)`)
-    .join('\n');
+  // If no items match under budget, but items exist matching the keywords regardless of price:
+  if (parsedSearch.maxPrice && parsedSearch.queryRegexStr) {
+    const anyPriceResults = await executeSearchAuctions({
+      query: parsedSearch.queryRegexStr,
+    });
+    if (anyPriceResults.length > 0) {
+      const itemsList = anyPriceResults
+        .map(
+          (it) =>
+            `• [${it.title}](/auctions/${it.id}) — Current price: ₹${it.currentPriceINR.toLocaleString('en-IN')} (${it.condition}, ${it.bidCount} bids)`
+        )
+        .join('\n');
+
+      return {
+        reply: `I found matching active listings on campus, though their current price is slightly above your ₹${parsedSearch.maxPrice.toLocaleString('en-IN')} budget:\n\n${itemsList}\n\nWould you like to bid on any of these, or should we save a **Saved Want** alert for ₹${parsedSearch.maxPrice.toLocaleString('en-IN')}?`,
+        pendingAction: null,
+      };
+    }
+  }
+
+  // If user asked a generic question like "what's available" or "show all"
+  if (!parsedSearch.queryRegexStr || parsedSearch.tokens.length === 0) {
+    const allActive = await executeSearchAuctions({});
+    if (allActive.length > 0) {
+      const itemsList = allActive
+        .map(
+          (it) =>
+            `• [${it.title}](/auctions/${it.id}) — Current price: ₹${it.currentPriceINR.toLocaleString('en-IN')} (${it.condition}, ${it.bidCount} bids)`
+        )
+        .join('\n');
+
+      return {
+        reply: `Here are the active campus listings currently open for bidding:\n\n${itemsList}\n\nLet me know if you would like more details or want to set a bid limit!`,
+        pendingAction: null,
+      };
+    }
+  }
 
   return {
-    reply: `Here are the active campus listings matching your search:\n\n${itemsList}\n\nWould you like me to prepare an automatic bid ceiling for any of these items?`,
+    reply: `I couldn't find any active listings matching "${userMessage.trim()}" right now. You can try adjusting your keywords or use **Saved Wants** in the top navigation to receive an instant alert when a peer lists this item!`,
     pendingAction: null,
   };
 }
