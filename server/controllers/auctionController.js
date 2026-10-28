@@ -347,7 +347,7 @@ const getAuctionById = async (req, res) => {
 
 /**
  * @route   PATCH /api/auctions/:id
- * @desc    Edit auction details (Only while Active and 0 bids)
+ * @desc    Edit auction details (Only while Active. Price/Increment/Closing time editable only if 0 bids)
  * @access  Private (Seller only)
  */
 const updateAuction = async (req, res) => {
@@ -357,10 +357,11 @@ const updateAuction = async (req, res) => {
     if (!item) {
       return res.status(404).json({
         success: false,
-        message: 'Auction not found.',
+        message: 'Auction listing not found.',
       });
     }
 
+    // Only the listing owner can edit their listing
     if (item.seller.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
@@ -368,46 +369,112 @@ const updateAuction = async (req, res) => {
       });
     }
 
+    // Do not allow editing cancelled or closed auctions
     if (item.status !== 'Active') {
       return res.status(400).json({
         success: false,
-        message: 'Only active auctions can be edited.',
+        message: 'Only active auctions can be edited. Cancelled or closed auctions cannot be modified.',
       });
     }
 
-    if (item.bidCount > 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Auction cannot be edited once bidding has started.',
-      });
+    const {
+      title,
+      description,
+      category,
+      condition,
+      startingPrice,
+      minimumIncrement,
+      closingAt,
+      existingPhotos,
+    } = req.body;
+
+    // Editable fields for all active auctions: title, description, category, condition
+    if (title && typeof title === 'string' && title.trim()) {
+      item.title = title.trim();
+    }
+    if (description && typeof description === 'string' && description.trim()) {
+      item.description = description.trim();
+    }
+    if (category && typeof category === 'string' && category.trim()) {
+      item.category = category.trim();
+    }
+    if (condition && typeof condition === 'string' && condition.trim()) {
+      item.condition = condition.trim();
     }
 
-    const { title, description, category, condition, startingPrice, minimumIncrement, closingAt } = req.body;
+    // Photos: Allow preserving selected existing photos and appending newly uploaded photos
+    let updatedPhotos = [];
+    if (existingPhotos !== undefined) {
+      let parsedExisting = [];
+      if (Array.isArray(existingPhotos)) {
+        parsedExisting = existingPhotos;
+      } else if (typeof existingPhotos === 'string') {
+        try {
+          parsedExisting = JSON.parse(existingPhotos);
+        } catch (e) {
+          parsedExisting = [existingPhotos];
+        }
+      }
+      updatedPhotos = parsedExisting.filter(
+        (p) => typeof p === 'string' && p.trim().length > 0
+      );
+    } else if (!req.files || req.files.length === 0) {
+      // Default to retaining current photos if no new files uploaded and existingPhotos not specified
+      updatedPhotos = item.photos || [];
+    }
 
-    if (title) item.title = title.trim();
-    if (description) item.description = description.trim();
-    if (category) item.category = category.trim();
-    if (condition) item.condition = condition;
-    if (startingPrice) item.startingPrice = toPaise(startingPrice);
-    if (minimumIncrement) item.minimumIncrement = toPaise(minimumIncrement);
-    if (closingAt) {
-      const newClose = new Date(closingAt);
-      if (newClose > new Date()) {
-        item.closingAt = newClose;
+    if (req.files && req.files.length > 0) {
+      const newPhotoPaths = req.files.map((file) => `/uploads/${file.filename}`);
+      updatedPhotos = [...updatedPhotos, ...newPhotoPaths];
+    }
+
+    if (updatedPhotos.length > 0) {
+      item.photos = updatedPhotos.slice(0, 5);
+    }
+
+    // Starting price, minimum increment, and closing time:
+    // Permitted ONLY if bidCount === 0.
+    // If bids exist (bidCount > 0), they are locked to preserve existing bid history and integrity.
+    if (item.bidCount === 0) {
+      if (startingPrice !== undefined && startingPrice !== '') {
+        const parsedStartingPrice = toPaise(startingPrice);
+        if (parsedStartingPrice >= 100) {
+          item.startingPrice = parsedStartingPrice;
+        }
+      }
+
+      if (minimumIncrement !== undefined && minimumIncrement !== '') {
+        const parsedMinIncrement = toPaise(minimumIncrement);
+        if (parsedMinIncrement >= 100) {
+          item.minimumIncrement = parsedMinIncrement;
+        }
+      }
+
+      if (closingAt) {
+        const newClose = new Date(closingAt);
+        const now = new Date();
+        if (!isNaN(newClose.getTime()) && newClose > new Date(now.getTime() + 60 * 1000)) {
+          item.closingAt = newClose;
+          item.originalClosesAt = newClose;
+        }
       }
     }
 
     await item.save();
 
+    const populatedItem = await Item.findById(item._id)
+      .populate('seller', 'name email profilePhoto')
+      .populate('provisionalWinner', 'name email profilePhoto');
+
     // Phase 3: Evaluate saved want watch alerts after listing details update
-    evaluateWatchesForItem(item).catch((err) =>
+    evaluateWatchesForItem(populatedItem).catch((err) =>
       console.error('Watch evaluation error on update:', err.message)
     );
 
     res.status(200).json({
       success: true,
       message: 'Auction listing updated successfully.',
-      auction: item,
+      auction: populatedItem,
     });
   } catch (error) {
     console.error('Update auction error:', error);

@@ -19,6 +19,7 @@ import {
   Handshake,
   Zap,
   Bot,
+  Pencil,
 } from 'lucide-react';
 import { auctionApi } from '../api/auctionApi';
 import { useAuth } from '../context/AuthContext';
@@ -27,6 +28,7 @@ import StatusBadge from '../components/StatusBadge';
 import CountdownTimer from '../components/CountdownTimer';
 import BidHistory from '../components/BidHistory';
 import AuctionQA from '../components/AuctionQA';
+import EditListingModal from '../components/EditListingModal';
 
 const formatINR = (paise) => {
   if (!paise) return '₹0';
@@ -72,6 +74,7 @@ const AuctionDetails = () => {
   const [rejectReason, setRejectReason] = useState('');
   const [showFailedPickupModal, setShowFailedPickupModal] = useState(false);
   const [failedPickupReason, setFailedPickupReason] = useState('');
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState('');
   const [actionSuccess, setActionSuccess] = useState('');
@@ -1110,13 +1113,24 @@ const AuctionDetails = () => {
                       </div>
                     )}
 
-                    <button
-                      type="button"
-                      onClick={openCancelModal}
-                      className="w-full py-2 px-3 rounded-xl border border-slate-200 hover:border-rose-200 text-slate-500 hover:text-rose-600 hover:bg-rose-50 text-xs font-semibold transition-all text-center"
-                    >
-                      Cancel Listing
-                    </button>
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setIsEditModalOpen(true)}
+                        className="w-full py-2 px-3 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                        <span>Edit Listing</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={openCancelModal}
+                        className="w-full py-2 px-3 rounded-xl border border-slate-200 hover:border-rose-200 text-slate-500 hover:text-rose-600 hover:bg-rose-50 text-xs font-semibold transition-all text-center"
+                      >
+                        Cancel Listing
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -1679,6 +1693,19 @@ const AuctionDetails = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* EDIT LISTING MODAL */}
+      {isEditModalOpen && auction && (
+        <EditListingModal
+          isOpen={isEditModalOpen}
+          item={auction}
+          onClose={() => setIsEditModalOpen(false)}
+          onUpdated={(updated) => {
+            if (updated) setAuction(updated);
+            fetchAuctionAndBids();
+          }}
+        />
       )}
     </div>
   );

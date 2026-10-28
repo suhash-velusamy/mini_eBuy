@@ -31,7 +31,9 @@ export const auctionApi = {
   },
 
   updateAuction: async (id, data) => {
-    const res = await api.patch(`/api/auctions/${id}`, data);
+    const isFormData = typeof FormData !== 'undefined' && data instanceof FormData;
+    const config = isFormData ? { headers: { 'Content-Type': 'multipart/form-data' } } : {};
+    const res = await api.patch(`/api/auctions/${id}`, data, config);
     return res.data;
   },
 

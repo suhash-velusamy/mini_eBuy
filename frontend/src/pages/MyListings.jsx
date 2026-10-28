@@ -12,11 +12,13 @@ import {
   TrendingUp,
   Handshake,
   MapPin,
+  Pencil,
 } from 'lucide-react';
 import { userApi } from '../api/userApi';
 import { auctionApi } from '../api/auctionApi';
 import StatusBadge from '../components/StatusBadge';
 import CountdownTimer from '../components/CountdownTimer';
+import EditListingModal from '../components/EditListingModal';
 
 const formatINR = (paise) => {
   if (!paise) return '₹0';
@@ -28,6 +30,9 @@ const MyListings = () => {
   const [stats, setStats] = useState(null);
   const [activeTab, setActiveTab] = useState('all');
   const [loading, setLoading] = useState(true);
+
+  // Edit Modal State for Active Listings
+  const [editingItem, setEditingItem] = useState(null);
 
   // Custom Confirmation Modal State (No native browser alerts/confirms!)
   const [modalState, setModalState] = useState({
@@ -279,6 +284,19 @@ const MyListings = () => {
                   </div>
 
                   <div className="flex items-center gap-2">
+                    {/* Active listings: Edit button */}
+                    {item.status === 'Active' && (
+                      <button
+                        type="button"
+                        onClick={() => setEditingItem(item)}
+                        className="px-3 py-1.5 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold shadow-xs transition-all flex items-center gap-1.5"
+                        title="Edit listing details"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                        <span>Edit</span>
+                      </button>
+                    )}
+
                     {/* Active with bids: Quick Accept Leading Bid */}
                     {item.status === 'Active' && item.currentLeadingBid && (
                       <button
@@ -437,6 +455,15 @@ const MyListings = () => {
             </div>
           </div>
         </div>
+      )}
+      {/* EDIT LISTING MODAL FOR ACTIVE LISTINGS */}
+      {editingItem && (
+        <EditListingModal
+          isOpen={Boolean(editingItem)}
+          item={editingItem}
+          onClose={() => setEditingItem(null)}
+          onUpdated={() => fetchListings()}
+        />
       )}
     </div>
   );

@@ -8,10 +8,6 @@ import {
   AlertCircle,
   ArrowRight,
   ShieldCheck,
-  Gavel,
-  Tag,
-  Shield,
-  CheckCircle2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -19,7 +15,6 @@ const Register = () => {
   const { register } = useAuth();
   const navigate = useNavigate();
 
-  const [role, setRole] = useState('bidder'); // 'bidder' | 'seller' | 'admin'
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -44,13 +39,8 @@ const Register = () => {
     setLoading(true);
 
     try {
-      const newUser = await register({ name, email, password, role });
-      // Role-based smart redirection
-      if (newUser?.role === 'seller') {
-        navigate('/seller-dashboard', { replace: true });
-      } else {
-        navigate('/', { replace: true });
-      }
+      await register({ name, email, password });
+      navigate('/', { replace: true });
     } catch (err) {
       setError(err.customMessage || err.message || 'Registration failed.');
     } finally {
@@ -60,7 +50,7 @@ const Register = () => {
 
   return (
     <div className="min-h-[85vh] flex items-center justify-center px-4 py-12">
-      <div className="max-w-lg w-full">
+      <div className="max-w-md w-full">
         {/* Header */}
         <div className="text-center mb-8">
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-700 to-indigo-600 flex items-center justify-center text-white mx-auto shadow-md shadow-blue-500/20 mb-3">
@@ -70,7 +60,7 @@ const Register = () => {
             Join Campus Auction
           </h2>
           <p className="text-xs text-slate-500 mt-1">
-            Choose your campus role to buy, bid, or sell with your peers
+            Create your student account to buy, bid, and sell with your peers
           </p>
         </div>
 
@@ -84,83 +74,6 @@ const Register = () => {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Role Selection */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-2 uppercase tracking-wider">
-                Select Your Campus Role
-              </label>
-              <div className="grid grid-cols-3 gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setRole('bidder')}
-                  className={`p-3 rounded-2xl border text-left transition-all flex flex-col justify-between relative ${
-                    role === 'bidder'
-                      ? 'border-blue-600 bg-blue-50/70 shadow-sm ring-1 ring-blue-600'
-                      : 'border-slate-200 hover:border-slate-300 bg-slate-50/50 hover:bg-slate-50'
-                  }`}
-                >
-                  {role === 'bidder' && (
-                    <CheckCircle2 className="w-4 h-4 text-blue-600 absolute top-2.5 right-2.5" />
-                  )}
-                  <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center mb-2">
-                    <Gavel className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-bold text-slate-900">Bidder / Buyer</div>
-                    <div className="text-[10px] text-slate-500 mt-0.5 leading-snug">
-                      Junior / Student bidding
-                    </div>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setRole('seller')}
-                  className={`p-3 rounded-2xl border text-left transition-all flex flex-col justify-between relative ${
-                    role === 'seller'
-                      ? 'border-amber-600 bg-amber-50/70 shadow-sm ring-1 ring-amber-600'
-                      : 'border-slate-200 hover:border-slate-300 bg-slate-50/50 hover:bg-slate-50'
-                  }`}
-                >
-                  {role === 'seller' && (
-                    <CheckCircle2 className="w-4 h-4 text-amber-600 absolute top-2.5 right-2.5" />
-                  )}
-                  <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center mb-2">
-                    <Tag className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-bold text-slate-900">Senior Seller</div>
-                    <div className="text-[10px] text-slate-500 mt-0.5 leading-snug">
-                      Graduating / Listing
-                    </div>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setRole('admin')}
-                  className={`p-3 rounded-2xl border text-left transition-all flex flex-col justify-between relative ${
-                    role === 'admin'
-                      ? 'border-purple-600 bg-purple-50/70 shadow-sm ring-1 ring-purple-600'
-                      : 'border-slate-200 hover:border-slate-300 bg-slate-50/50 hover:bg-slate-50'
-                  }`}
-                >
-                  {role === 'admin' && (
-                    <CheckCircle2 className="w-4 h-4 text-purple-600 absolute top-2.5 right-2.5" />
-                  )}
-                  <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center mb-2">
-                    <Shield className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-bold text-slate-900">Campus Admin</div>
-                    <div className="text-[10px] text-slate-500 mt-0.5 leading-snug">
-                      Coordinator oversight
-                    </div>
-                  </div>
-                </button>
-              </div>
-            </div>
-
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
                 Full Name & Year/Branch
@@ -243,9 +156,7 @@ const Register = () => {
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
               ) : (
                 <>
-                  <span>
-                    Create {role === 'seller' ? 'Seller' : role === 'admin' ? 'Admin' : 'Student'} Account
-                  </span>
+                  <span>Create Student Account</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}

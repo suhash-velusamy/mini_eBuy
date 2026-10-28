@@ -51,9 +51,26 @@ router.get('/', getAuctions);
 router.get('/:id', getAuctionById);
 router.get('/:id/bids', getAuctionBids);
 
+// Middleware to conditionally handle multipart photo uploads on edit
+const handleUpload = (req, res, next) => {
+  if (req.is('multipart/form-data')) {
+    upload.array('photos', 5)(req, res, (err) => {
+      if (err) {
+        return res.status(400).json({
+          success: false,
+          message: err.message || 'File upload error. Ensure images are < 5MB.',
+        });
+      }
+      next();
+    });
+  } else {
+    next();
+  }
+};
+
 // Protected routes
 router.post('/', protect, upload.array('photos', 5), createAuction);
-router.patch('/:id', protect, updateAuction);
+router.patch('/:id', protect, handleUpload, updateAuction);
 router.post('/:id/cancel', protect, cancelAuction);
 router.post('/:id/bids', protect, bidLimiter, placeBid);
 
