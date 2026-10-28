@@ -1,16 +1,6 @@
-import React, { useState } from 'react';
-import { Search, Filter, RotateCcw, ArrowUpDown, ChevronDown } from 'lucide-react';
-
-const CATEGORIES = [
-  'All',
-  'Textbooks & Study Material',
-  'Electronics & Gadgets',
-  'Bicycles & Mobility',
-  'Lab Equipment',
-  'Hostel Essentials',
-  'Sports & Fitness',
-  'Other',
-];
+import React, { useState, useEffect } from 'react';
+import { Search, Filter, RotateCcw, ArrowUpDown } from 'lucide-react';
+import { auctionApi } from '../api/auctionApi';
 
 const CONDITIONS = ['All', 'New', 'Like New', 'Good', 'Fair', 'Poor'];
 
@@ -30,8 +20,27 @@ const STATUS_OPTIONS = [
   { value: 'Sold', label: 'Sold' },
 ];
 
-const SearchFilters = ({ filters, onFilterChange, onReset }) => {
+const SearchFilters = ({ filters, onFilterChange, onReset, dynamicCategories }) => {
   const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const [categories, setCategories] = useState(dynamicCategories || ['All']);
+
+  useEffect(() => {
+    if (dynamicCategories && dynamicCategories.length > 0) {
+      setCategories(['All', ...dynamicCategories.filter((c) => c !== 'All')]);
+    } else {
+      const fetchCats = async () => {
+        try {
+          const res = await auctionApi.getCategories();
+          if (res.success && res.categories) {
+            setCategories(['All', ...res.categories.filter((c) => c !== 'All')]);
+          }
+        } catch (err) {
+          // fallback
+        }
+      };
+      fetchCats();
+    }
+  }, [dynamicCategories]);
 
   const handleInputChange = (field, value) => {
     onFilterChange({ ...filters, [field]: value, page: 1 });
@@ -89,13 +98,13 @@ const SearchFilters = ({ filters, onFilterChange, onReset }) => {
         </div>
       </div>
 
-      {/* Advanced Filter Row (Always visible on desktop, toggle on mobile) */}
+      {/* Advanced Filter Row */}
       <div
         className={`mt-4 pt-4 border-t border-slate-100 flex-col md:flex md:flex-row md:items-center md:flex-wrap gap-3 ${
           showMobileFilters ? 'flex' : 'hidden md:flex'
         }`}
       >
-        {/* Category */}
+        {/* Dynamic Category Dropdown from DB */}
         <div className="flex-1 min-w-[180px]">
           <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
             Category
@@ -105,7 +114,7 @@ const SearchFilters = ({ filters, onFilterChange, onReset }) => {
             onChange={(e) => handleInputChange('category', e.target.value)}
             className="w-full text-xs font-medium py-2 px-3 rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
           >
-            {CATEGORIES.map((cat) => (
+            {categories.map((cat) => (
               <option key={cat} value={cat}>
                 {cat}
               </option>

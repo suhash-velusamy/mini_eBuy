@@ -177,9 +177,23 @@ const runVerification = async () => {
     }
 
     // 7. Verify Notifications Collection
-    console.log('[7/7] Verifying Notification System & Deduplication...');
+    console.log('[7/8] Verifying Notification System & Deduplication...');
     const notifs = await Notification.find({});
     console.log(`      - In-App Notifications logged: PASS (${notifs.length} notifications in database)`);
+
+    // 8. Test Dynamic Categories & Live Platform Stats from Database
+    console.log('[8/8] Testing Dynamic Categories & Platform Stats Calculation...');
+    const dbCats = await Item.distinct('category');
+    if (!dbCats || dbCats.length === 0) {
+      throw new Error('Dynamic categories query returned no categories');
+    }
+    const [activeCount, soldCount, totalUserCount] = await Promise.all([
+      Item.countDocuments({ status: 'Active' }),
+      Item.countDocuments({ status: 'Sold' }),
+      User.countDocuments({}),
+    ]);
+    console.log(`      - Dynamic Categories in DB: PASS (${dbCats.length} distinct categories found)`);
+    console.log(`      - Live Platform Metrics: PASS (${activeCount} active, ${soldCount} sold, ${totalUserCount} registered users)`);
 
     console.log('\n====================================================');
     console.log('  ALL VERIFICATION TESTS COMPLETED SUCCESSFULLY!  ');

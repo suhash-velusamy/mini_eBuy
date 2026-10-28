@@ -1,8 +1,92 @@
 const Item = require('../models/Item');
 const Bid = require('../models/Bid');
+const User = require('../models/User');
 const Notification = require('../models/Notification');
 const { toPaise, formatINR } = require('../utils/money');
 const { emitToAuction, emitToUser } = require('../sockets/socketManager');
+
+/**
+ * @route   GET /api/auctions/categories
+ * @desc    Get dynamic categories and active counts from database
+ * @access  Public
+ */
+const getCategories = async (req, res) => {
+  try {
+    const defaultCategories = [
+      'Textbooks & Study Material',
+      'Electronics & Gadgets',
+      'Bicycles & Mobility',
+      'Lab Equipment',
+      'Hostel Essentials',
+      'Sports & Fitness',
+      'Other',
+    ];
+    const dbCategories = await Item.distinct('category');
+    const combined = Array.from(new Set([...defaultCategories, ...dbCategories])).filter(Boolean);
+
+    // Get item counts per category for active listings
+    const categoryCounts = await Item.aggregate([
+      { $match: { status: 'Active' } },
+      { $group: { _id: '$category', count: { $sum: 1 } } },
+    ]);
+
+    const countMap = {};
+    categoryCounts.forEach((c) => {
+      countMap[c._id] = c.count;
+    });
+
+    const result = combined.map((name) => ({
+      name,
+      activeCount: countMap[name] || 0,
+    }));
+
+    res.status(200).json({
+      success: true,
+      categories: combined,
+      categoryDetails: result,
+    });
+  } catch (error) {
+    console.error('Error fetching categories:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch categories.' });
+  }
+};
+
+/**
+ * @route   GET /api/auctions/stats
+ * @desc    Get live platform metrics dynamically from database
+ * @access  Public
+ */
+const getAuctionStats = async (req, res) => {
+  try {
+    const [totalActive, totalBids, totalSold, totalUsers] = await Promise.all([
+      Item.countDocuments({ status: 'Active' }),
+      Bid.countDocuments({}),
+      Item.countDocuments({ status: 'Sold' }),
+      User.countDocuments({}),
+    ]);
+
+    const soldVolumeAgg = await Item.aggregate([
+      { $match: { status: 'Sold', winningAmount: { $ne: null } } },
+      { $group: { _id: null, totalPaise: { $sum: '$winningAmount' } } },
+    ]);
+
+    const totalVolumePaise = soldVolumeAgg[0]?.totalPaise || 0;
+
+    res.status(200).json({
+      success: true,
+      stats: {
+        activeAuctions: totalActive,
+        totalBids: totalBids,
+        completedHandovers: totalSold,
+        verifiedStudents: totalUsers,
+        totalSalesVolumeINR: totalVolumePaise / 100,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching stats:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch platform stats.' });
+  }
+};
 
 /**
  * @route   GET /api/auctions
@@ -54,7 +138,6 @@ const getAuctions = async (req, res) => {
 
     // 5. Price Filter (in INR -> convert to paise)
     if (minPrice || maxPrice) {
-      const priceField = 'currentLeadingBid';
       const minPaise = minPrice ? toPaise(minPrice) : 0;
       const maxPaise = maxPrice ? toPaise(maxPrice) : Infinity;
 
@@ -192,7 +275,7 @@ const createAuction = async (req, res) => {
     const newItem = await Item.create({
       seller: req.user._id,
       title: title.trim(),
-      category,
+      category: category.trim(),
       description: description.trim(),
       condition,
       photos: photoPaths,
@@ -293,7 +376,7 @@ const updateAuction = async (req, res) => {
 
     if (title) item.title = title.trim();
     if (description) item.description = description.trim();
-    if (category) item.category = category;
+    if (category) item.category = category.trim();
     if (condition) item.condition = condition;
     if (startingPrice) item.startingPrice = toPaise(startingPrice);
     if (minimumIncrement) item.minimumIncrement = toPaise(minimumIncrement);
@@ -399,7 +482,6 @@ const getAuctionBids = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(100);
 
-    // Format bids: sanitize bidder name (e.g. "Jane Doe") and do not expose email
     const safeBids = bids.map((b) => ({
       _id: b._id,
       amount: b.amount,
@@ -890,6 +972,8 @@ const recordFailedPickup = async (req, res) => {
 };
 
 module.exports = {
+  getCategories,
+  getAuctionStats,
   getAuctions,
   createAuction,
   getAuctionById,

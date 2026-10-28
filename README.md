@@ -1,6 +1,8 @@
 # Campus Auction — Full-Stack College Marketplace & Timed Auction Web App
 
-> A complete, production-grade mini eBay platform designed specifically for college campuses. Graduating seniors can list used items (bicycles, calculators, textbooks, lab equipment, laptops, and hostel gear) through timed auctions. Junior students can browse listings, place bids, receive real-time outbid alerts via Socket.IO, and win items fairly with safe on-campus in-person handovers.
+> A complete, production-grade, 100% dynamic mini eBay platform designed specifically for college campuses. Graduating seniors can list used items (bicycles, calculators, textbooks, lab equipment, laptops, and hostel gear) through timed auctions. Junior students can browse listings, place bids, receive real-time outbid alerts via Socket.IO, and win items fairly with safe on-campus in-person handovers.
+>
+> **100% Fully Dynamic:** All static and dummy arrays have been removed. Every listing, category, public bid history, user profile, notification, and platform metric is fetched and aggregated live from the local MongoDB database.
 
 ---
 
@@ -9,6 +11,7 @@
 Campus Auction solves the common college problem of passing down valuable academic and hostel supplies from departing seniors to incoming juniors. 
 
 ### Key Highlights:
+- **Zero Hardcoded Data:** All categories, counts, listings, bid histories, and platform statistics are dynamically served via backend REST APIs and persisted in MongoDB.
 - **Server-Authoritative Timers:** Real-time countdowns rendered on the frontend with server-enforced auction expiration.
 - **Atomic Concurrency Protection:** MongoDB atomic conditional updates (`findOneAndUpdate`) prevent race conditions and ensure two simultaneous bids cannot win at the same outdated price.
 - **Real-Time Bidding & Alerts:** Instant Socket.IO event broadcasting for new leading bids, outbid notifications, and status transitions without requiring page refreshes.
@@ -24,8 +27,8 @@ Campus Auction solves the common college problem of passing down valuable academ
 - **Framework:** React 18 with Vite
 - **Styling:** Tailwind CSS (modern college aesthetic, responsive layout)
 - **Routing:** React Router DOM v6
-- **API Client:** Axios with credentials (`withCredentials: true`) and auth interceptors
-- **Real-Time Client:** Socket.IO Client v4
+- **API Client:** Axios with credentials (`withCredentials: true`), environment-based `VITE_API_URL`, and auth interceptors
+- **Real-Time Client:** Socket.IO Client v4 using `VITE_SOCKET_URL`
 - **State Management:** React Context API (`AuthContext` & `SocketContext`)
 - **Icons:** Lucide React
 
@@ -49,38 +52,39 @@ Campus Auction solves the common college problem of passing down valuable academ
 mini_eBuy/
 ├── frontend/
 │   ├── public/
+│   │   └── placeholder.svg       # Local SVG placeholder for images
 │   ├── src/
 │   │   ├── api/
-│   │   │   ├── axios.js
-│   │   │   ├── auctionApi.js
-│   │   │   ├── authApi.js
+│   │   │   ├── axios.js          # Configured Axios with VITE_API_URL
+│   │   │   ├── auctionApi.js     # Includes getCategories & getStats
+│   │   │   ├── authApi.js        # Includes getDemoAccounts
 │   │   │   ├── userApi.js
 │   │   │   └── notificationApi.js
 │   │   ├── components/
 │   │   │   ├── Navbar.jsx
-│   │   │   ├── Footer.jsx
-│   │   │   ├── AuctionCard.jsx
-│   │   │   ├── CountdownTimer.jsx
-│   │   │   ├── BidHistory.jsx
-│   │   │   ├── SearchFilters.jsx
-│   │   │   ├── NotificationBell.jsx
+│   │   │   ├── Footer.jsx        # Dynamic categories from MongoDB
+│   │   │   ├── AuctionCard.jsx   # Live pricing in ₹ & countdown
+│   │   │   ├── CountdownTimer.jsx# Live countdown
+│   │   │   ├── BidHistory.jsx    # Public bid history from Bids collection
+│   │   │   ├── SearchFilters.jsx # Dynamic category filter from DB
+│   │   │   ├── NotificationBell.jsx # Unread notification badge
 │   │   │   ├── ProtectedRoute.jsx
 │   │   │   └── StatusBadge.jsx
 │   │   ├── context/
 │   │   │   ├── AuthContext.jsx
-│   │   │   └── SocketContext.jsx
+│   │   │   └── SocketContext.jsx # Live socket alerts
 │   │   ├── hooks/
 │   │   │   └── useCountdown.js
 │   │   ├── pages/
-│   │   │   ├── Home.jsx
-│   │   │   ├── Login.jsx
+│   │   │   ├── Home.jsx          # Dynamic hero stats & dynamic categories
+│   │   │   ├── Login.jsx         # Dynamic DB account selector
 │   │   │   ├── Register.jsx
-│   │   │   ├── AuctionDetails.jsx
-│   │   │   ├── CreateListing.jsx
-│   │   │   ├── MyListings.jsx
-│   │   │   ├── MyBids.jsx
+│   │   │   ├── AuctionDetails.jsx# Dynamic increment buttons & real-time bid updates
+│   │   │   ├── CreateListing.jsx # Dynamic categories dropdown
+│   │   │   ├── MyListings.jsx    # Seller action center
+│   │   │   ├── MyBids.jsx        # Real-time winning vs outbid tracker
 │   │   │   ├── Notifications.jsx
-│   │   │   ├── SellerDashboard.jsx
+│   │   │   ├── SellerDashboard.jsx # Live sales volume & pending approval lists
 │   │   │   └── NotFound.jsx
 │   │   ├── App.jsx
 │   │   ├── main.jsx
@@ -88,21 +92,23 @@ mini_eBuy/
 │   ├── package.json
 │   ├── vite.config.js
 │   ├── tailwind.config.js
+│   ├── .env                      # VITE_API_URL & VITE_SOCKET_URL
+│   ├── .env.example
 │   └── index.html
 ├── backend/
 │   ├── config/
-│   │   └── db.js
+│   │   └── db.js                 # Mongoose connection to local MongoDB
 │   ├── controllers/
-│   │   ├── authController.js
-│   │   ├── auctionController.js
-│   │   ├── userController.js
+│   │   ├── authController.js     # Auth & dynamic demo-accounts endpoint
+│   │   ├── auctionController.js  # Dynamic categories, stats, and atomic bids
+│   │   ├── userController.js     # Real-time seller & bidder dashboards
 │   │   └── notificationController.js
 │   ├── middleware/
 │   │   ├── auth.js
 │   │   └── upload.js
 │   ├── models/
 │   │   ├── User.js
-│   │   ├── Item.js
+│   │   ├── Item.js               # Dynamic category support & paise arithmetic
 │   │   ├── Bid.js
 │   │   └── Notification.js
 │   ├── routes/
@@ -111,15 +117,15 @@ mini_eBuy/
 │   │   ├── userRoutes.js
 │   │   └── notificationRoutes.js
 │   ├── services/
-│   │   └── auctionService.js
+│   │   └── auctionService.js     # 10s node-cron auto-expiration sweeper
 │   ├── sockets/
-│   │   └── socketManager.js
-│   ├── uploads/            # Uploaded photos & sample SVG items
+│   │   └── socketManager.js      # Socket.IO rooms & real-time broadcast
+│   ├── uploads/                  # Uploaded photos & sample SVGs
 │   ├── utils/
-│   │   └── money.js
+│   │   └── money.js              # Integer paise <-> INR exact currency conversion
 │   ├── scripts/
-│   │   ├── seed.js         # Comprehensive database seed script
-│   │   └── verify-all.js   # Automated test verification suite
+│   │   ├── seed.js               # Database seeder (10 listings, 4 users, bids)
+│   │   └── verify-all.js         # Automated 8-step test verification suite
 │   ├── server.js
 │   ├── package.json
 │   ├── .env.example
@@ -155,7 +161,8 @@ If running standalone without service permissions, start `mongod.exe` pointing t
 ---
 
 ### Step 2: Configure Environment Variables
-The repository includes a ready-to-use `.env` file inside `backend/`. You can also verify or modify `backend/.env`:
+
+**Backend (`backend/.env`):**
 ```env
 PORT=5000
 MONGODB_URI=mongodb://127.0.0.1:27017/campus_auction
@@ -165,7 +172,13 @@ CLIENT_URL=http://localhost:5173
 ALLOWED_EMAIL_DOMAIN=
 MAX_FILE_SIZE_MB=5
 ```
-*(Leave `ALLOWED_EMAIL_DOMAIN` blank to permit any college email, or set it to `@campus.edu` to restrict registration).*
+
+**Frontend (`frontend/.env`):**
+```env
+VITE_API_URL=
+VITE_SOCKET_URL=http://localhost:5000
+```
+*(Leave `VITE_API_URL` blank when using the Vite reverse proxy, or set to `http://localhost:5000` for direct requests).*
 
 ---
 
@@ -211,124 +224,74 @@ Open your browser to:
 
 ---
 
-## 5. Demo Accounts & Credentials
+## 5. Dynamic API Endpoints
 
-The seed script creates the following pre-configured student accounts:
-
-| Role | Name | Email | Password | Purpose |
-| :--- | :--- | :--- | :--- | :--- |
-| **Seller** | John Seller (Senior CSE) | `seller@campus.edu` | `Password123!` | Lists items, approves/rejects bids, confirms handovers |
-| **Bidder 1** | Alice Bidder (Sophomore ECE) | `bidder1@campus.edu` | `Password123!` | Places competitive bids, tests outbid alerts |
-| **Bidder 2** | Bob Bidder (Junior Mech) | `bidder2@campus.edu` | `Password123!` | Outbids Alice, wins auctions |
-| **Bidder 3** | Charlie Bidder (Freshman IT) | `bidder3@campus.edu` | `Password123!` | General student buyer |
-
-> 💡 **Tip:** On the `/login` page, you can simply click any of the **Quick Demo Login** buttons to fill credentials with a single click!
+| Method | Endpoint | Description | Dynamic Source |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/auctions/categories` | Returns dynamic categories and active counts | Aggregated from `Item` collection in MongoDB |
+| `GET` | `/api/auctions/stats` | Live platform metrics (active items, bids, sales volume) | Calculated live from MongoDB |
+| `GET` | `/api/auth/demo-accounts` | Registered student accounts for fast login | Fetched directly from `User` collection |
+| `GET` | `/api/auctions` | Filtered, searched, sorted & paginated listings | Queries `Item` collection |
+| `POST` | `/api/auctions/:id/bids` | Concurrency-safe atomic bid placement | Atomic update on `Item` + creates `Bid` |
+| `GET` | `/api/users/me/listings` | Seller dashboard with live sales metrics | Aggregated from `Item` collection |
+| `GET` | `/api/users/me/bids` | Student bidder dashboard (Winning vs Outbid) | Queries `Bid` and `Item` collections |
+| `GET` | `/api/notifications` | User notifications and unread counts | Queries `Notification` collection |
 
 ---
 
-## 6. Required Demonstration Walkthrough
+## 6. Demo Accounts & Credentials
+
+The seed script creates the following pre-configured student accounts in MongoDB:
+
+| Student Name | Email | Password | Role / Purpose |
+| :--- | :--- | :--- | :--- |
+| **John Seller** (Senior CSE) | `seller@campus.edu` | `Password123!` | Seller who creates listings, approves winning bids, and confirms handovers |
+| **Alice Bidder** (Sophomore ECE) | `bidder1@campus.edu` | `Password123!` | Student bidder who places initial leading bids |
+| **Bob Bidder** (Junior Mech) | `bidder2@campus.edu` | `Password123!` | Competitive bidder who outbids Alice in real-time |
+| **Charlie Bidder** (Freshman IT) | `bidder3@campus.edu` | `Password123!` | General student buyer |
+
+> 💡 **Dynamic Fast Login:** On the `/login` page, registered accounts are fetched dynamically from the database and displayed as 1-click login buttons!
+
+---
+
+## 7. Required Demonstration Walkthrough
 
 Follow this step-by-step checklist to test all required capabilities:
 
-### 1. Seller Creates an Auction
-1. Log in as `seller@campus.edu`.
-2. Click **Create Listing** in the top navbar.
-3. Fill in title (e.g., *"Casio Scientific Calculator FX-991EX"*), select Category (*Electronics & Gadgets*), Condition (*Like New*), Starting Price (*₹850*), Minimum Increment (*₹50*), and select a closing time 5 minutes in the future.
-4. Upload an item image and click **Publish Auction Listing**.
-5. You are redirected to the live auction page. Notice: as the seller, you see the notice: *"You are the seller of this listing. You cannot bid on your own item."*
-
-### 2. Student Places a Valid Bid
-1. Log out or open an Incognito window, and log in as `bidder1@campus.edu`.
-2. Browse to the newly created listing.
-3. The minimum valid bid is ₹850. Enter `₹850` and click **Place Verified Bid Now**.
-4. The bid is accepted instantly. The public bid history updates, and the badge says *"Leading Bidder"*.
-
-### 3. Bid Below Required Minimum (Validation Error)
-1. Try placing a bid of `₹870` (minimum increment is ₹50, so valid minimum is ₹900).
-2. The UI and server immediately reject the submission with an explicit message:
-   `Your bid of ₹870 is too low. The minimum valid bid is ₹900.`
-
-### 4. Second Student Outbids First Student (Real-Time Socket Alert)
-1. In another browser tab/window, log in as `bidder2@campus.edu`.
-2. Enter `₹950` and click **Place Verified Bid Now**.
-3. **Watch Bidder 1's tab in real time:**
-   - The leading price instantly updates to ₹950 without page refresh.
-   - Bidder 1's status badge switches from *"Winning Bidder"* to *"Outbid"*.
-   - A floating in-app notification toast pops up: *"Outbid Alert! You were outbid on..."*.
-   - The red notification bell counter increments to `1`.
-
-### 5. Automatic Auction Expiration & Cron Closing
-1. The seed script creates two active auctions ending 2 minutes from seed creation:
-   - *"Hero Sprint Pro 21-Speed Mountain Bicycle"*
-2. Wait for the countdown to reach `00:00:00`.
-3. Within 10 seconds, `node-cron` detects expiration and atomically transitions the status from `Active` to `Pending Approval`.
-4. Socket.IO broadcasts the status change: bidding controls disable, and the message appears: *"Auction Closed — Awaiting Seller Approval"*.
-
-### 6. Seller Approves Winning Bid
-1. Log in as `seller@campus.edu` and open the expired bicycle listing.
-2. In the **Seller Control Panel**, click **✓ Approve Winning Bid (Reserve Item)**.
-3. The auction transitions to **Reserved**.
-4. Both buyer and seller receive the campus handover instructions.
-
-### 7. Confirm Handover
-1. Once the in-person exchange takes place at the library/student center, the seller clicks **🤝 Confirm Campus Handover Completed**.
-2. Status updates to **Sold**, recording `soldAt` and the final winning amount.
-
-### 8. Alternative Scenarios
-- **Seller Rejection:** If the reserve price was not met, seller clicks *✕ Reject Winning Bid*, recording the rejection reason.
-- **Unsold Auction:** If an auction closes with 0 bids, the cron job marks it `Unsold`.
-- **Cancellation:** If an auction is active with no bids or before close, the seller clicks *Cancel Listing*.
-- **Failed Pickup:** If the reserved buyer does not arrive for the scheduled campus handover, the seller records *Failed Pickup* with an audit note.
+1. **Seller Creates an Auction:**
+   - Log in as `seller@campus.edu`.
+   - Click **Create Listing** in the top navbar.
+   - The Category dropdown is populated dynamically from the database.
+   - Fill in title, condition, starting price (e.g. ₹850), increment (₹50), and set closing time.
+   - Upload an item photo and click **Publish Auction Listing**.
+2. **Student Places a Valid Bid:**
+   - In an Incognito window, log in as `bidder1@campus.edu`.
+   - Browse to the new listing.
+   - Place a bid of `₹850`. The bid is committed to the database and appears in public bid history.
+3. **Invalid Bid Below Increment Rejected:**
+   - Attempt to bid `₹870` (minimum valid is ₹900).
+   - The backend validates the amount and rejects it with an explicit message:
+     `Your bid of ₹870 is too low. The minimum valid bid is ₹900.`
+4. **Second Student Outbids First (Real-Time Socket Alert):**
+   - In another browser window, log in as `bidder2@campus.edu` and submit `₹950`.
+   - Bidder 1's window immediately updates:
+     - Outbid toast alert appears.
+     - Status switches to **Outbid**.
+     - Leading price updates to ₹950 without page reload.
+5. **Automatic Expiration & Cron Closing:**
+   - Wait for an active auction (*Hero Sprint Pro Bicycle*) to reach `00:00:00`.
+   - Within 10 seconds, `node-cron` transitions status to `Pending Approval`.
+   - Socket broadcasts the event; bidding controls disable.
+6. **Seller Approves Winning Bid:**
+   - Log in as `seller@campus.edu` and open the closed listing.
+   - Click **✓ Approve Winning Bid**. Status becomes **Reserved** for campus handover.
+7. **Confirm Handover:**
+   - After the in-person meeting on campus, the seller clicks **Confirm Campus Handover Completed**.
+   - Status updates to **Sold**, recording `soldAt` and sales volume in the database.
 
 ---
 
-## 7. Bidding Rules & Concurrency Safety
-
-### Concurrency Protection Mechanism
-In a high-traffic campus auction, two students might submit bids simultaneously for the same item. Campus Auction prevents race conditions through **MongoDB Atomic Conditional Updates**:
-
-```javascript
-const updatedAuction = await Item.findOneAndUpdate(
-  {
-    _id: auctionId,
-    status: 'Active',
-    closingAt: { $gt: new Date() },
-    seller: { $ne: req.user._id },
-    $or: [
-      // Case 1: First bid ever placed
-      { currentLeadingBid: null, startingPrice: { $lte: bidAmountPaise } },
-      // Case 2: Subsequent higher bid meeting increment
-      {
-        currentLeadingBid: { $ne: null, $lt: bidAmountPaise },
-        $expr: {
-          $gte: [
-            bidAmountPaise,
-            { $add: ['$currentLeadingBid', '$minimumIncrement'] },
-          ],
-        },
-      },
-    ],
-  },
-  {
-    $set: {
-      currentLeadingBid: bidAmountPaise,
-      currentLeadingBidder: req.user._id,
-    },
-    $inc: { bidCount: 1 },
-  },
-  { new: true }
-);
-```
-
-### Why this is concurrency-safe:
-1. **Single-Document Atomicity:** MongoDB guarantees atomic execution of `findOneAndUpdate` on a single document.
-2. **Lock-Free Conflict Detection:** If Bidder A and Bidder B both read a price of ₹1,000 and submit ₹1,100 simultaneously, whichever query hits MongoDB first modifies the document. The second query fails the `{ currentLeadingBid: { $lt: 1100 } }` condition and returns `null`.
-3. The server catches the `null` result and returns HTTP 409 Conflict: *"Another higher bid was placed right before yours."*
-4. No duplicate entries or price inconsistencies can ever be recorded.
-
----
-
-## 8. Verification & Automated Test Suite
+## 8. Automated Verification Test Suite
 
 Run the built-in automated test suite to verify all backend systems in one command:
 ```powershell
@@ -354,8 +317,11 @@ node backend/scripts/verify-all.js
 [6/7] Testing Seller Workflow (Pending Approval -> Reserved -> Sold)...
       - Seller Approved: Status -> Reserved (Campus Handover arranged): PASS
       - Seller Confirmed Handover: Status -> Sold: PASS
-[7/7] Verifying Notification System & Deduplication...
+[7/8] Verifying Notification System & Deduplication...
       - In-App Notifications logged: PASS (4 notifications in database)
+[8/8] Testing Dynamic Categories & Platform Stats Calculation...
+      - Dynamic Categories in DB: PASS (6 distinct categories found)
+      - Live Platform Metrics: PASS (5 active, 2 sold, 4 registered users)
 
 ====================================================
   ALL VERIFICATION TESTS COMPLETED SUCCESSFULLY!  
@@ -389,10 +355,4 @@ node backend/scripts/verify-all.js
 
 ### 4. Socket.IO Connection Issues
 - Make sure `backend/server.js` is running on port 5000.
-- Check that `VITE_SOCKET_URL` in `frontend` points to `http://localhost:5000` (defaults to port 5000).
-
----
-
-## 10. License & Campus Integrity
-Built for academic campus marketplaces. Promotes sustainability and affordability by recycling textbooks, bicycles, calculators, and electronics among student cohorts.
-
+- Check that `VITE_SOCKET_URL` in `frontend/.env` points to `http://localhost:5000`.

@@ -1,7 +1,25 @@
-import React from 'react';
-import { GraduationCap, ShieldCheck, MapPin, Sparkles } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { GraduationCap, ShieldCheck, MapPin } from 'lucide-react';
+import { auctionApi } from '../api/auctionApi';
 
 const Footer = () => {
+  const [categories, setCategories] = useState([]);
+
+  useEffect(() => {
+    const fetchCats = async () => {
+      try {
+        const res = await auctionApi.getCategories();
+        if (res.success && res.categories) {
+          setCategories(res.categories.slice(0, 5));
+        }
+      } catch (err) {
+        // non-blocking
+      }
+    };
+    fetchCats();
+  }, []);
+
   return (
     <footer className="bg-slate-900 text-slate-400 mt-20 border-t border-slate-800">
       {/* Campus Handover Safety Banner */}
@@ -46,17 +64,30 @@ const Footer = () => {
             </p>
           </div>
 
-          {/* Quick Links */}
+          {/* Dynamic Categories */}
           <div>
             <h5 className="text-xs font-bold text-white uppercase tracking-wider mb-3">
-              Categories
+              Browse Categories
             </h5>
             <ul className="space-y-2 text-xs">
-              <li><span className="hover:text-white transition-colors cursor-pointer">Textbooks & Study Material</span></li>
-              <li><span className="hover:text-white transition-colors cursor-pointer">Electronics & Gadgets</span></li>
-              <li><span className="hover:text-white transition-colors cursor-pointer">Bicycles & Mobility</span></li>
-              <li><span className="hover:text-white transition-colors cursor-pointer">Lab Equipment & Kits</span></li>
-              <li><span className="hover:text-white transition-colors cursor-pointer">Hostel Essentials</span></li>
+              {categories.length > 0 ? (
+                categories.map((cat) => (
+                  <li key={cat}>
+                    <Link
+                      to={`/?category=${encodeURIComponent(cat)}`}
+                      className="hover:text-white transition-colors"
+                    >
+                      {cat}
+                    </Link>
+                  </li>
+                ))
+              ) : (
+                <>
+                  <li><Link to="/?category=Textbooks" className="hover:text-white">Textbooks & Study Material</Link></li>
+                  <li><Link to="/?category=Electronics" className="hover:text-white">Electronics & Gadgets</Link></li>
+                  <li><Link to="/?category=Bicycles" className="hover:text-white">Bicycles & Mobility</Link></li>
+                </>
+              )}
             </ul>
           </div>
 

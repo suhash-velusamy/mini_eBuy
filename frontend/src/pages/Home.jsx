@@ -8,26 +8,40 @@ import {
   ChevronLeft,
   ChevronRight,
   TrendingUp,
+  Tag,
+  Package,
 } from 'lucide-react';
 import { auctionApi } from '../api/auctionApi';
 import AuctionCard from '../components/AuctionCard';
 import SearchFilters from '../components/SearchFilters';
 import { useSocket } from '../context/SocketContext';
 
-const QUICK_CATEGORIES = [
-  { label: 'All Items', value: 'All', emoji: '🏷️' },
-  { label: 'Bicycles', value: 'Bicycles & Mobility', emoji: '🚲' },
-  { label: 'Textbooks', value: 'Textbooks & Study Material', emoji: '📚' },
-  { label: 'Electronics', value: 'Electronics & Gadgets', emoji: '💻' },
-  { label: 'Lab Kits', value: 'Lab Equipment', emoji: '🥼' },
-  { label: 'Hostel Essentials', value: 'Hostel Essentials', emoji: '🫖' },
-  { label: 'Sports', value: 'Sports & Fitness', emoji: '🏸' },
-];
+// Helper emoji picker for categories
+const getCategoryEmoji = (catName) => {
+  if (/book|study/i.test(catName)) return '📚';
+  if (/electr|laptop|calc/i.test(catName)) return '💻';
+  if (/cycle|bike/i.test(catName)) return '🚲';
+  if (/lab/i.test(catName)) return '🥼';
+  if (/hostel|kettle|lamp/i.test(catName)) return '🫖';
+  if (/sport|fitness/i.test(catName)) return '🏸';
+  return '🏷️';
+};
 
 const Home = () => {
   const [auctions, setAuctions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState({ page: 1, totalPages: 1, total: 0 });
+
+  // Dynamic Categories and Live Stats from Database
+  const [categories, setCategories] = useState([]);
+  const [stats, setStats] = useState({
+    activeAuctions: 0,
+    totalBids: 0,
+    completedHandovers: 0,
+    verifiedStudents: 0,
+    totalSalesVolumeINR: 0,
+  });
+
   const [filters, setFilters] = useState({
     search: '',
     category: 'All',
@@ -42,6 +56,28 @@ const Home = () => {
 
   const { socket } = useSocket();
 
+  // 1. Fetch dynamic categories and live database metrics
+  useEffect(() => {
+    const fetchMetadata = async () => {
+      try {
+        const [catsRes, statsRes] = await Promise.all([
+          auctionApi.getCategories(),
+          auctionApi.getStats(),
+        ]);
+        if (catsRes.success && catsRes.categories) {
+          setCategories(catsRes.categories);
+        }
+        if (statsRes.success && statsRes.stats) {
+          setStats(statsRes.stats);
+        }
+      } catch (err) {
+        console.error('Error fetching metadata:', err);
+      }
+    };
+    fetchMetadata();
+  }, []);
+
+  // 2. Fetch auctions matching search and filters
   const fetchAuctions = async () => {
     try {
       setLoading(true);
@@ -65,7 +101,7 @@ const Home = () => {
     fetchAuctions();
   }, [filters]);
 
-  // Listen for socket bid updates or status changes to update live card prices
+  // 3. Listen for socket bid updates or status changes
   useEffect(() => {
     if (!socket) return;
 
@@ -82,6 +118,8 @@ const Home = () => {
           return item;
         })
       );
+      // Increment total live bids in stats
+      setStats((prev) => ({ ...prev, totalBids: prev.totalBids + 1 }));
     };
 
     const handleStatusChanged = (data) => {
@@ -123,7 +161,7 @@ const Home = () => {
 
   return (
     <div className="min-h-screen">
-      {/* Hero Section */}
+      {/* Hero Section with Live Database Figures */}
       <section className="relative overflow-hidden bg-gradient-to-b from-blue-900 via-indigo-900 to-slate-900 text-white pt-12 pb-20 px-4 sm:px-6 lg:px-8">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.2),transparent_50%)]" />
 
@@ -160,35 +198,41 @@ const Home = () => {
             </a>
           </div>
 
-          {/* Highlights */}
+          {/* Dynamic Live Highlights from Database */}
           <div className="pt-8 grid grid-cols-2 sm:grid-cols-3 gap-4 max-w-3xl mx-auto border-t border-white/10 text-left">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-300 flex-shrink-0">
-                <Gavel className="w-4 h-4" />
+              <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center text-blue-300 flex-shrink-0">
+                <Gavel className="w-5 h-5" />
               </div>
               <div>
-                <p className="text-xs font-bold text-white">Live Bidding</p>
-                <p className="text-[11px] text-slate-400">Server-verified price locks</p>
+                <p className="text-xs font-extrabold text-white font-mono">
+                  {stats.totalBids} Total Bids
+                </p>
+                <p className="text-[11px] text-slate-400">Live MongoDB verified</p>
               </div>
             </div>
 
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-300 flex-shrink-0">
-                <ShieldCheck className="w-4 h-4" />
+              <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center text-blue-300 flex-shrink-0">
+                <ShieldCheck className="w-5 h-5" />
               </div>
               <div>
-                <p className="text-xs font-bold text-white">Seller Approval</p>
-                <p className="text-[11px] text-slate-400">Guaranteed reserve control</p>
+                <p className="text-xs font-extrabold text-white font-mono">
+                  {stats.activeAuctions} Active Listings
+                </p>
+                <p className="text-[11px] text-slate-400">Open for campus bidding</p>
               </div>
             </div>
 
             <div className="col-span-2 sm:col-span-1 flex items-center gap-3 justify-center sm:justify-start">
-              <div className="w-9 h-9 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-300 flex-shrink-0">
-                <GraduationCap className="w-4 h-4" />
+              <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center text-blue-300 flex-shrink-0">
+                <GraduationCap className="w-5 h-5" />
               </div>
               <div>
-                <p className="text-xs font-bold text-white">Campus Handover</p>
-                <p className="text-[11px] text-slate-400">In-person safety</p>
+                <p className="text-xs font-extrabold text-white font-mono">
+                  {stats.completedHandovers} Campus Sales
+                </p>
+                <p className="text-[11px] text-slate-400">Safe in-person handovers</p>
               </div>
             </div>
           </div>
@@ -197,32 +241,45 @@ const Home = () => {
 
       {/* Main Browse Section */}
       <section id="browse-section" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        {/* Quick Category Navigation Pills */}
+        {/* Dynamic Category Navigation Pills directly from Database */}
         <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-4 scrollbar-none">
-          {QUICK_CATEGORIES.map((cat) => {
-            const isSelected = filters.category === cat.value;
+          <button
+            onClick={() => setFilters({ ...filters, category: 'All', page: 1 })}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+              filters.category === 'All'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            <span>🏷️</span>
+            <span>All Items</span>
+          </button>
+
+          {categories.map((catName) => {
+            const isSelected = filters.category === catName;
             return (
               <button
-                key={cat.value}
-                onClick={() => setFilters({ ...filters, category: cat.value, page: 1 })}
+                key={catName}
+                onClick={() => setFilters({ ...filters, category: catName, page: 1 })}
                 className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
                   isSelected
                     ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
                     : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
                 }`}
               >
-                <span>{cat.emoji}</span>
-                <span>{cat.label}</span>
+                <span>{getCategoryEmoji(catName)}</span>
+                <span>{catName}</span>
               </button>
             );
           })}
         </div>
 
-        {/* Search, Filter, Sort Controls */}
+        {/* Search, Filter, Sort Controls with Dynamic Categories */}
         <SearchFilters
           filters={filters}
           onFilterChange={setFilters}
           onReset={handleResetFilters}
+          dynamicCategories={categories}
         />
 
         {/* Listings Header info */}

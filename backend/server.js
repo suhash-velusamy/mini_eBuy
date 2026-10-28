@@ -23,8 +23,11 @@ connectDB();
 
 // CORS configuration
 const allowedOrigins = [
-  process.env.CLIENT_URL || 'http://localhost:5173',
+  process.env.CLIENT_URL || 'http://localhost:5174',
+  'http://localhost:5173',
+  'http://localhost:5174',
   'http://127.0.0.1:5173',
+  'http://127.0.0.1:5174',
 ];
 
 app.use(
@@ -52,14 +55,24 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/auctions', auctionRoutes);
+app.use('/api/listings', auctionRoutes); // CampusBid alias
 app.use('/api/users', userRoutes);
+app.use('/api/me', userRoutes); // CampusBid alias
 app.use('/api/notifications', notificationRoutes);
+
+// Server time endpoint for clock synchronization
+app.get('/api/time', (req, res) => {
+  res.status(200).json({
+    time: new Date().toISOString(),
+    timestamp: Date.now(),
+  });
+});
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.status(200).json({
     status: 'ok',
-    message: 'Campus Auction API server is operational',
+    message: 'CampusBid / Campus Auction API server is operational',
     timestamp: new Date().toISOString(),
   });
 });
@@ -104,6 +117,21 @@ initSocket(server);
 initAuctionScheduler();
 
 const PORT = process.env.PORT || 5000;
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`\n[Server Error] Port ${PORT} is already in use by another process.`);
+    console.error(`To resolve this issue:`);
+    console.error(`  1. Kill the process using port ${PORT}:`);
+    console.error(`     Run in PowerShell: npx kill-port ${PORT}`);
+    console.error(`     or: Get-Process node | Stop-Process -Force`);
+    console.error(`  2. Or change PORT in backend/.env (e.g. PORT=5001).\n`);
+    process.exit(1);
+  } else {
+    console.error('Server error:', err);
+  }
+});
+
 server.listen(PORT, () => {
   console.log(`=========================================`);
   console.log(` Campus Auction Backend Server Running   `);

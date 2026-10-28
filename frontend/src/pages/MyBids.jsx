@@ -89,8 +89,7 @@ const MyBids = () => {
                     alt={auction.title}
                     className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl object-cover bg-slate-100 border border-slate-200 flex-shrink-0"
                     onError={(e) => {
-                      e.target.src =
-                        'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=600&auto=format&fit=crop&q=60';
+                      e.target.src = '/placeholder.svg';
                     }}
                   />
                   <div className="min-w-0 flex-1">

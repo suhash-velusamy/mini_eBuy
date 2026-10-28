@@ -1,9 +1,43 @@
 import { useState, useEffect } from 'react';
+import api from '../api/axios';
+
+let globalServerOffset = 0;
+let isSyncing = false;
+let hasSynced = false;
+
+// Synchronize with server clock to eliminate device clock skew
+const syncServerClock = async () => {
+  if (isSyncing || hasSynced) return;
+  isSyncing = true;
+  try {
+    const t0 = Date.now();
+    const res = await api.get('/api/time');
+    const t1 = Date.now();
+    const roundTrip = t1 - t0;
+    if (res.data && res.data.timestamp) {
+      // Estimate server time at t1: serverTimestamp + roundTrip / 2
+      const estimatedServerNow = res.data.timestamp + Math.floor(roundTrip / 2);
+      globalServerOffset = estimatedServerNow - t1;
+      hasSynced = true;
+    }
+  } catch {
+    // If offline or request fails, gracefully fallback to local device time
+  } finally {
+    isSyncing = false;
+  }
+};
 
 export const useCountdown = (targetDate) => {
   const [timeLeft, setTimeLeft] = useState(() => calculateTimeLeft(targetDate));
 
   useEffect(() => {
+    // Trigger background clock synchronization once
+    if (!hasSynced) {
+      syncServerClock().then(() => {
+        setTimeLeft(calculateTimeLeft(targetDate));
+      });
+    }
+
     // Initial calculate
     setTimeLeft(calculateTimeLeft(targetDate));
 
@@ -35,7 +69,7 @@ const calculateTimeLeft = (targetDate) => {
   }
 
   const target = new Date(targetDate).getTime();
-  const now = Date.now();
+  const now = Date.now() + globalServerOffset;
   const difference = target - now;
 
   if (difference <= 0) {

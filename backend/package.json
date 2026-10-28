@@ -6,7 +6,11 @@
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
-    "seed": "node scripts/seed.js"
+    "dev": "node server.js",
+    "test": "node test/rules.test.js",
+    "seed": "node scripts/seed.js",
+    "verify": "node scripts/verify-all.js",
+    "free-port": "npx --yes kill-port 5000"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

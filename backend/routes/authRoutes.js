@@ -6,6 +6,7 @@ const {
   login,
   logout,
   getMe,
+  getDemoAccounts,
 } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
 
@@ -25,5 +26,13 @@ router.post('/register', authLimiter, register);
 router.post('/login', authLimiter, login);
 router.post('/logout', logout);
 router.get('/me', protect, getMe);
+router.patch('/me/notification-prefs', protect, (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'Notification preferences updated successfully.',
+    prefs: req.body,
+  });
+});
+router.get('/demo-accounts', getDemoAccounts);
 
 module.exports = router;

@@ -5,9 +5,11 @@
   "scripts": {
     "start": "node backend/server.js",
     "seed": "node backend/scripts/seed.js",
+    "test": "cd backend && npm test",
     "verify": "node backend/scripts/verify-all.js",
     "backend": "cd backend && npm start",
     "frontend": "cd frontend && npm run dev",
+    "free-port": "npx --yes kill-port 5000",
     "build": "cd frontend && npm run build"
   },
   "keywords": [

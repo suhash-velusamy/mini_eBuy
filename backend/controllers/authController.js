@@ -176,9 +176,35 @@ const getMe = async (req, res) => {
   });
 };
 
+/**
+ * @route   GET /api/auth/demo-accounts
+ * @desc    Get registered student demo accounts dynamically from database
+ * @access  Public
+ */
+const getDemoAccounts = async (req, res) => {
+  try {
+    const users = await User.find({})
+      .select('name email createdAt')
+      .limit(6);
+
+    res.status(200).json({
+      success: true,
+      users: users.map((u) => ({
+        _id: u._id,
+        name: u.name,
+        email: u.email,
+      })),
+    });
+  } catch (error) {
+    console.error('Error fetching demo accounts:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch demo accounts.' });
+  }
+};
+
 module.exports = {
   register,
   login,
   logout,
   getMe,
+  getDemoAccounts,
 };

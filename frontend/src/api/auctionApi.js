@@ -1,6 +1,16 @@
 import api from './axios';
 
 export const auctionApi = {
+  getCategories: async () => {
+    const res = await api.get('/api/auctions/categories');
+    return res.data;
+  },
+
+  getStats: async () => {
+    const res = await api.get('/api/auctions/stats');
+    return res.data;
+  },
+
   getAuctions: async (params = {}) => {
     const res = await api.get('/api/auctions', { params });
     return res.data;

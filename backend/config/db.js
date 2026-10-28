@@ -2,7 +2,10 @@ const mongoose = require('mongoose');
 
 const connectDB = async () => {
   try {
-    const connUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/campus_auction';
+    const connUri =
+      process.env.MONGODB_URI ||
+      process.env.MONGO_URI ||
+      'mongodb://127.0.0.1:27017/mini_eBuy';
     const conn = await mongoose.connect(connUri);
     console.log(`[MongoDB] Connected to database: ${conn.connection.name} @ ${conn.connection.host}:${conn.connection.port}`);
   } catch (error) {

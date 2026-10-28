@@ -340,8 +340,7 @@ const AuctionDetails = () => {
                   alt={auction.title}
                   className="w-full h-full object-cover transition-all duration-300"
                   onError={(e) => {
-                    e.target.src =
-                      'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=600&auto=format&fit=crop&q=60';
+                    e.target.src = '/placeholder.svg';
                   }}
                 />
                 <div className="absolute top-3 left-3">
@@ -596,31 +595,31 @@ const AuctionDetails = () => {
                     </div>
                   </div>
 
-                  {/* Quick Increment Buttons */}
+                  {/* Dynamic Increment Buttons based on item's minimum increment */}
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] font-bold text-slate-400 uppercase">
                       Quick Add:
                     </span>
                     <button
                       type="button"
-                      onClick={() => addQuickIncrement(50)}
+                      onClick={() => addQuickIncrement(Math.max(1, Math.round(auction.minimumIncrement / 100)))}
                       className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-slate-700 transition-all"
                     >
-                      +₹50
+                      +₹{Math.max(1, Math.round(auction.minimumIncrement / 100))}
                     </button>
                     <button
                       type="button"
-                      onClick={() => addQuickIncrement(100)}
+                      onClick={() => addQuickIncrement(Math.max(1, Math.round(auction.minimumIncrement / 100) * 2))}
                       className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-slate-700 transition-all"
                     >
-                      +₹100
+                      +₹{Math.max(1, Math.round(auction.minimumIncrement / 100) * 2)}
                     </button>
                     <button
                       type="button"
-                      onClick={() => addQuickIncrement(500)}
+                      onClick={() => addQuickIncrement(Math.max(1, Math.round(auction.minimumIncrement / 100) * 5))}
                       className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-slate-700 transition-all"
                     >
-                      +₹500
+                      +₹{Math.max(1, Math.round(auction.minimumIncrement / 100) * 5)}
                     </button>
                   </div>
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   UploadCloud,
@@ -13,27 +13,43 @@ import {
 } from 'lucide-react';
 import { auctionApi } from '../api/auctionApi';
 
-const CATEGORIES = [
-  'Textbooks & Study Material',
-  'Electronics & Gadgets',
-  'Bicycles & Mobility',
-  'Lab Equipment',
-  'Hostel Essentials',
-  'Sports & Fitness',
-  'Other',
-];
-
 const CONDITIONS = ['New', 'Like New', 'Good', 'Fair', 'Poor'];
 
 const CreateListing = () => {
   const navigate = useNavigate();
 
+  const [categories, setCategories] = useState([
+    'Textbooks & Study Material',
+    'Electronics & Gadgets',
+    'Bicycles & Mobility',
+    'Lab Equipment',
+    'Hostel Essentials',
+    'Sports & Fitness',
+    'Other',
+  ]);
+
   const [title, setTitle] = useState('');
-  const [category, setCategory] = useState(CATEGORIES[0]);
+  const [category, setCategory] = useState('');
   const [condition, setCondition] = useState('Good');
   const [description, setDescription] = useState('');
   const [startingPrice, setStartingPrice] = useState('');
   const [minimumIncrement, setMinimumIncrement] = useState('50');
+
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const res = await auctionApi.getCategories();
+        if (res.success && res.categories && res.categories.length > 0) {
+          setCategories(res.categories);
+          setCategory(res.categories[0]);
+        }
+      } catch (err) {
+        // fallback to default
+        setCategory('Textbooks & Study Material');
+      }
+    };
+    loadCategories();
+  }, []);
 
   // Set default closing time to 24 hours from now
   const defaultClose = new Date(Date.now() + 24 * 60 * 60 * 1000)
@@ -219,7 +235,7 @@ const CreateListing = () => {
                 onChange={(e) => setCategory(e.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               >
-                {CATEGORIES.map((c) => (
+                {categories.map((c) => (
                   <option key={c} value={c}>
                     {c}
                   </option>

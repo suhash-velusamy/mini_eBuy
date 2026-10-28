@@ -17,15 +17,7 @@ const itemSchema = new mongoose.Schema(
     category: {
       type: String,
       required: [true, 'Category is required'],
-      enum: [
-        'Textbooks & Study Material',
-        'Electronics & Gadgets',
-        'Bicycles & Mobility',
-        'Lab Equipment',
-        'Hostel Essentials',
-        'Sports & Fitness',
-        'Other',
-      ],
+      trim: true,
       index: true,
     },
     description: {

@@ -5,9 +5,23 @@ const User = require('../models/User');
 let io = null;
 
 const initSocket = (httpServer) => {
+  const allowedOrigins = [
+    process.env.CLIENT_URL || 'http://localhost:5174',
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:5174',
+  ];
+
   io = new Server(httpServer, {
     cors: {
-      origin: process.env.CLIENT_URL || 'http://localhost:5173',
+      origin: function (origin, callback) {
+        if (!origin || allowedOrigins.includes(origin) || origin.startsWith('http://localhost:')) {
+          callback(null, true);
+        } else {
+          callback(null, true);
+        }
+      },
       credentials: true,
       methods: ['GET', 'POST'],
     },

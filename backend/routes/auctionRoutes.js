@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const rateLimit = require('express-rate-limit');
 const {
+  getCategories,
+  getAuctionStats,
   getAuctions,
   createAuction,
   getAuctionById,
@@ -29,7 +31,11 @@ const bidLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Public routes
+// Dynamic Public Metadata routes (must be before /:id)
+router.get('/categories', getCategories);
+router.get('/stats', getAuctionStats);
+
+// Public auction routes
 router.get('/', getAuctions);
 router.get('/:id', getAuctionById);
 router.get('/:id/bids', getAuctionBids);
@@ -45,5 +51,11 @@ router.post('/:id/approve', protect, approveBid);
 router.post('/:id/reject', protect, rejectBid);
 router.post('/:id/confirm-handover', protect, confirmHandover);
 router.post('/:id/failed-pickup', protect, recordFailedPickup);
+router.post('/:id/handover', protect, (req, res) => {
+  if (req.body.result === 'failed_pickup') {
+    return recordFailedPickup(req, res);
+  }
+  return confirmHandover(req, res);
+});
 
 module.exports = router;
