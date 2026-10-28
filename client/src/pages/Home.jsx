@@ -10,11 +10,13 @@ import {
   TrendingUp,
   Tag,
   Package,
+  Users,
 } from 'lucide-react';
 import { auctionApi } from '../api/auctionApi';
 import AuctionCard from '../components/AuctionCard';
 import SearchFilters from '../components/SearchFilters';
 import { useSocket } from '../context/SocketContext';
+import { useAuth } from '../context/AuthContext';
 
 // Helper emoji picker for categories
 const getCategoryEmoji = (catName) => {
@@ -55,6 +57,7 @@ const Home = () => {
   });
 
   const { socket } = useSocket();
+  const { user, isAuthenticated } = useAuth();
 
   // 1. Fetch dynamic categories and live database metrics
   useEffect(() => {
@@ -198,8 +201,8 @@ const Home = () => {
             </a>
           </div>
 
-          {/* Dynamic Live Highlights from Database */}
-          <div className="pt-8 grid grid-cols-2 sm:grid-cols-3 gap-4 max-w-3xl mx-auto border-t border-white/10 text-left">
+          {/* Dynamic Live Highlights from Database (Including Live User Data) */}
+          <div className="pt-8 grid grid-cols-2 lg:grid-cols-4 gap-4 max-w-4xl mx-auto border-t border-white/10 text-left">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center text-blue-300 flex-shrink-0">
                 <Gavel className="w-5 h-5" />
@@ -224,7 +227,7 @@ const Home = () => {
               </div>
             </div>
 
-            <div className="col-span-2 sm:col-span-1 flex items-center gap-3 justify-center sm:justify-start">
+            <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center text-blue-300 flex-shrink-0">
                 <GraduationCap className="w-5 h-5" />
               </div>
@@ -235,7 +238,45 @@ const Home = () => {
                 <p className="text-[11px] text-slate-400">Safe in-person handovers</p>
               </div>
             </div>
+
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center text-blue-300 flex-shrink-0">
+                <Users className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs font-extrabold text-white font-mono">
+                  {stats.verifiedStudents} Campus Students
+                </p>
+                <p className="text-[11px] text-slate-400">Verified college members</p>
+              </div>
+            </div>
           </div>
+
+          {/* Logged-In User Profile Quick Snapshot */}
+          {isAuthenticated && user && (
+            <div className="pt-5 flex items-center justify-center">
+              <div className="inline-flex flex-wrap items-center justify-center gap-2 px-4 py-2 rounded-2xl bg-white/10 backdrop-blur-md border border-white/15 text-xs text-blue-200 shadow-sm">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>
+                  Signed in as <strong className="text-white font-semibold">{user.name}</strong> ({user.email})
+                </span>
+                <span className="text-white/30 hidden sm:inline">•</span>
+                <Link
+                  to="/my-listings"
+                  className="text-blue-300 hover:text-white font-semibold underline underline-offset-2 transition-colors"
+                >
+                  My Listings
+                </Link>
+                <span className="text-white/30 hidden sm:inline">•</span>
+                <Link
+                  to="/my-bids"
+                  className="text-blue-300 hover:text-white font-semibold underline underline-offset-2 transition-colors"
+                >
+                  My Bids
+                </Link>
+              </div>
+            </div>
+          )}
         </div>
       </section>
 
