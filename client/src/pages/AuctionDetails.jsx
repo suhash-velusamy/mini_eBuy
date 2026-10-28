@@ -48,6 +48,7 @@ const AuctionDetails = () => {
   // Bidder Confirmation Modal
   const [showBidConfirmModal, setShowBidConfirmModal] = useState(false);
   const [pendingBidAmount, setPendingBidAmount] = useState(0);
+  const [extensionNotice, setExtensionNotice] = useState('');
 
   // Seller Action Custom Modals (No native browser alerts/confirms!)
   const [showApproveModal, setShowApproveModal] = useState(false);
@@ -143,12 +144,32 @@ const AuctionDetails = () => {
       }
     };
 
+    // Listen for Phase 1 auctionExtended event
+    const handleAuctionExtended = (data) => {
+      if (data.itemId === id || data.auctionId === id) {
+        setAuction((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            closingAt: data.closesAt || data.closingAt,
+            extensionCount: data.extensionCount || (prev.extensionCount || 0) + 1,
+          };
+        });
+        setExtensionNotice('⏱️ Last-minute bid! Auction extended by +60 seconds.');
+        setTimeout(() => setExtensionNotice(''), 7000);
+      }
+    };
+
     socket.on('bid:placed', handleBidPlaced);
+    socket.on('newBid', handleBidPlaced);
+    socket.on('auctionExtended', handleAuctionExtended);
     socket.on('auction:status_changed', handleStatusChanged);
 
     return () => {
       socket.emit('leave:auction', id);
       socket.off('bid:placed', handleBidPlaced);
+      socket.off('newBid', handleBidPlaced);
+      socket.off('auctionExtended', handleAuctionExtended);
       socket.off('auction:status_changed', handleStatusChanged);
     };
   }, [socket, id]);
@@ -521,7 +542,19 @@ const AuctionDetails = () => {
           <div className="lg:col-span-5 space-y-6">
             {/* Live Timer Card */}
             {auction.status === 'Active' && (
-              <CountdownTimer targetDate={auction.closingAt} variant="full" />
+              <div className="space-y-2">
+                <CountdownTimer
+                  targetDate={auction.closingAt}
+                  variant="full"
+                  extensionCount={auction.extensionCount || 0}
+                />
+                {extensionNotice && (
+                  <div className="p-3 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-bold flex items-center gap-2 animate-pulse">
+                    <Clock className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                    <span>{extensionNotice}</span>
+                  </div>
+                )}
+              </div>
             )}
 
             {/* Price & Bidding Action Box */}

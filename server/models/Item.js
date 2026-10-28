@@ -72,6 +72,15 @@ const itemSchema = new mongoose.Schema(
       required: [true, 'Closing date and time is required'],
       index: true,
     },
+    originalClosesAt: {
+      type: Date,
+      default: null,
+    },
+    extensionCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     status: {
       type: String,
       enum: [
@@ -141,6 +150,15 @@ itemSchema.virtual('currentLeadingBidINR').get(function () {
 itemSchema.virtual('winningAmountINR').get(function () {
   return this.winningAmount ? this.winningAmount / 100 : null;
 });
+
+// ClosesAt alias virtual
+itemSchema.virtual('closesAt')
+  .get(function () {
+    return this.closingAt;
+  })
+  .set(function (val) {
+    this.closingAt = val;
+  });
 
 // Minimum next valid bid in paise
 itemSchema.virtual('minNextBid').get(function () {

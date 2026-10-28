@@ -489,6 +489,8 @@ const getAuctionBids = async (req, res) => {
       amount: b.amount,
       amountINR: b.amountINR,
       createdAt: b.createdAt,
+      extendedClosing: Boolean(b.extendedClosing),
+      isAutomatic: Boolean(b.isAutomatic),
       bidder: {
         _id: b.bidder?._id,
         name: b.bidder?.name || 'Anonymous Student',
@@ -598,13 +600,55 @@ const placeBid = async (req, res) => {
 
     const previousLeadingBidderId = currentItem.currentLeadingBidder;
 
-    // ATOMIC CONDITIONAL UPDATE:
-    // Ensures concurrency safety against race conditions and simultaneous bids.
-    const updatedAuction = await Item.findOneAndUpdate(
-      {
+    // BOUNDED RETRY LOOP (Max 5 Retries for Concurrency Safety)
+    const MAX_RETRIES = 5;
+    let attempts = 0;
+    let committedBid = null;
+    let updatedAuction = null;
+    let wasExtended = false;
+
+    while (attempts < MAX_RETRIES) {
+      attempts++;
+
+      // Re-read fresh state on retries
+      const freshItem = attempts === 1 ? currentItem : await Item.findById(auctionId);
+      if (!freshItem || freshItem.status !== 'Active') {
+        return res.status(400).json({
+          success: false,
+          message: 'Auction is no longer active.',
+        });
+      }
+
+      const freshNow = new Date();
+      if (new Date(freshItem.closingAt) <= freshNow) {
+        return res.status(400).json({
+          success: false,
+          message: 'Bidding has stopped because this auction has closed.',
+        });
+      }
+
+      const freshMinRequired = freshItem.currentLeadingBid
+        ? freshItem.currentLeadingBid + freshItem.minimumIncrement
+        : freshItem.startingPrice;
+
+      if (bidAmountPaise < freshMinRequired) {
+        return res.status(400).json({
+          success: false,
+          message: `Your bid of ${formatINR(bidAmountPaise)} is too low. The minimum valid bid is ${formatINR(freshMinRequired)}.`,
+        });
+      }
+
+      // PHASE 1: LAST-MINUTE EXTENSION RULE
+      // If a valid bid is accepted when (closesAt - now) <= 30 seconds,
+      // set closesAt = bidTime + 60 seconds.
+      const timeRemainingMs = new Date(freshItem.closingAt).getTime() - freshNow.getTime();
+      const shouldExtend = timeRemainingMs > 0 && timeRemainingMs <= 30000;
+      const newClosingAt = shouldExtend ? new Date(freshNow.getTime() + 60000) : freshItem.closingAt;
+
+      const updateQuery = {
         _id: auctionId,
         status: 'Active',
-        closingAt: { $gt: now },
+        closingAt: freshItem.closingAt, // Concurrency guard on closing time
         seller: { $ne: bidderId },
         $or: [
           // Case 1: First bid ever placed
@@ -623,19 +667,41 @@ const placeBid = async (req, res) => {
             },
           },
         ],
-      },
-      {
+      };
+
+      const updateDoc = {
         $set: {
           currentLeadingBid: bidAmountPaise,
           currentLeadingBidder: bidderId,
         },
         $inc: { bidCount: 1 },
-      },
-      { new: true }
-    ).populate('seller', 'name email');
+      };
+
+      if (shouldExtend) {
+        updateDoc.$set.closingAt = newClosingAt;
+        updateDoc.$inc.extensionCount = 1;
+        if (!freshItem.originalClosesAt) {
+          updateDoc.$set.originalClosesAt = freshItem.closingAt;
+        }
+      }
+
+      updatedAuction = await Item.findOneAndUpdate(updateQuery, updateDoc, { new: true })
+        .populate('seller', 'name email')
+        .populate('currentLeadingBidder', 'name');
+
+      if (updatedAuction) {
+        wasExtended = shouldExtend;
+        break; // Successfully committed atomic update
+      }
+
+      // Concurrency race: backoff with small random jitter and retry
+      if (attempts < MAX_RETRIES) {
+        await new Promise((resolve) => setTimeout(resolve, Math.floor(Math.random() * 30) + 10));
+      }
+    }
 
     if (!updatedAuction) {
-      // Race condition detected! Another bid was committed while this one was in flight.
+      // Race condition exceeded max retries
       return res.status(409).json({
         success: false,
         message:
@@ -644,11 +710,12 @@ const placeBid = async (req, res) => {
     }
 
     // Store the committed bid in the Bids collection
-    const committedBid = await Bid.create({
+    committedBid = await Bid.create({
       auction: auctionId,
       bidder: bidderId,
       amount: bidAmountPaise,
       idempotencyKey,
+      extendedClosing: wasExtended,
     });
 
     const formattedAmount = formatINR(bidAmountPaise);
@@ -692,31 +759,56 @@ const placeBid = async (req, res) => {
       }
     }
 
-    // 3. Broadcast real-time bid event to public auction room
-    emitToAuction(auctionId, 'bid:placed', {
+    // 3. Emit Phase 1 auctionExtended event to item room if extended
+    if (wasExtended) {
+      emitToAuction(auctionId, 'auctionExtended', {
+        itemId: auctionId,
+        auctionId,
+        closesAt: updatedAuction.closingAt,
+        closingAt: updatedAuction.closingAt,
+        extensionCount: updatedAuction.extensionCount,
+      });
+    }
+
+    // 4. Broadcast real-time bid events to public auction room
+    const bidPayload = {
       auctionId,
+      itemId: auctionId,
       currentLeadingBid: bidAmountPaise,
       currentLeadingBidINR: bidAmountPaise / 100,
       bidCount: updatedAuction.bidCount,
       minNextBid: bidAmountPaise + updatedAuction.minimumIncrement,
       minNextBidINR: (bidAmountPaise + updatedAuction.minimumIncrement) / 100,
+      closesAt: updatedAuction.closingAt,
+      closingAt: updatedAuction.closingAt,
+      extensionCount: updatedAuction.extensionCount,
+      extendedClosing: wasExtended,
       newBid: {
         _id: committedBid._id,
         amount: bidAmountPaise,
         amountINR: bidAmountPaise / 100,
         createdAt: committedBid.createdAt,
+        extendedClosing: wasExtended,
         bidder: {
           _id: req.user._id,
           name: req.user.name,
         },
       },
-    });
+    };
+
+    emitToAuction(auctionId, 'bid:placed', bidPayload);
+    emitToAuction(auctionId, 'newBid', bidPayload);
 
     res.status(201).json({
       success: true,
-      message: `Your bid of ${formattedAmount} was placed successfully!`,
+      message: wasExtended
+        ? `🎉 Bid placed! Auction was in the final 30 seconds and has been extended by +60 seconds!`
+        : `Your bid of ${formattedAmount} was placed successfully!`,
       auction: updatedAuction,
       bid: committedBid,
+      extended: wasExtended,
+      closesAt: updatedAuction.closingAt,
+      extensionCount: updatedAuction.extensionCount,
     });
   } catch (error) {
     console.error('Place bid error:', error);

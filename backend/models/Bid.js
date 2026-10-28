@@ -24,6 +24,14 @@ const bidSchema = new mongoose.Schema(
       sparse: true,
       index: true,
     },
+    extendedClosing: {
+      type: Boolean,
+      default: false,
+    },
+    isAutomatic: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: { createdAt: true, updatedAt: false },

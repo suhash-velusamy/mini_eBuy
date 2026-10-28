@@ -2,7 +2,12 @@ import React from 'react';
 import { Clock, AlertTriangle } from 'lucide-react';
 import { useCountdown } from '../hooks/useCountdown';
 
-const CountdownTimer = ({ targetDate, variant = 'compact' }) => {
+const CountdownTimer = ({
+  targetDate,
+  variant = 'compact',
+  extensionCount = 0,
+  isExtended = false,
+}) => {
   const { days, hours, minutes, seconds, totalSeconds, isEnded, formatted } =
     useCountdown(targetDate);
 
@@ -35,9 +40,16 @@ const CountdownTimer = ({ targetDate, variant = 'compact' }) => {
             )}
             {isEndingSoon ? 'Ending Soon!' : 'Time Remaining'}
           </span>
-          <span className="text-[11px] font-normal text-slate-500">
-            Server Authoritative
-          </span>
+          <div className="flex items-center gap-2">
+            {(extensionCount > 0 || isExtended) && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-200 text-amber-900 border border-amber-400 animate-pulse">
+                Extended +60s{extensionCount > 1 ? ` (${extensionCount}x)` : ''}
+              </span>
+            )}
+            <span className="text-[11px] font-normal text-slate-500">
+              Server Authoritative
+            </span>
+          </div>
         </div>
 
         <div className="grid grid-cols-4 gap-2 text-center mt-1">
@@ -85,6 +97,11 @@ const CountdownTimer = ({ targetDate, variant = 'compact' }) => {
     >
       <Clock className={`w-3.5 h-3.5 ${isEndingSoon ? 'text-amber-600' : 'text-slate-500'}`} />
       <span>{formatted}</span>
+      {extensionCount > 0 && (
+        <span className="text-[9px] font-extrabold text-amber-900 bg-amber-200 px-1 rounded">
+          +60s
+        </span>
+      )}
     </div>
   );
 };

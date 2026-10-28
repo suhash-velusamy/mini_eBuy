@@ -79,6 +79,11 @@ const BidHistory = ({
                         Leading Bid
                       </span>
                     )}
+                    {bid.extendedClosing && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 border border-amber-300">
+                        Extended +60s
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-1 text-[11px] text-slate-600 mt-0.5">
                     <Clock className="w-3 h-3 text-slate-500" />
