@@ -19,7 +19,15 @@ const {
   getAutoBids,
   deleteAutoBid,
 } = require('../controllers/auctionController');
-const { protect } = require('../middleware/auth');
+const {
+  checkDuplicateQuestion,
+  askQuestion,
+  getAuctionQuestions,
+  answerQuestion,
+  flagQuestion,
+  updateQuestionStatus,
+} = require('../controllers/qaController');
+const { protect, optionalAuth } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 
 // Rate limiter for bidding to prevent automated spam/abuse
@@ -65,5 +73,13 @@ router.post('/:id/handover', protect, (req, res) => {
   }
   return confirmHandover(req, res);
 });
+
+// Phase 4: Community Questions & Answers (Q&A) routes
+router.get('/:id/questions', optionalAuth, getAuctionQuestions);
+router.post('/:id/questions', protect, askQuestion);
+router.post('/:id/questions/check-duplicate', protect, checkDuplicateQuestion);
+router.post('/:id/questions/:qId/answer', protect, answerQuestion);
+router.post('/:id/questions/:qId/flag', protect, flagQuestion);
+router.patch('/:id/questions/:qId/status', protect, updateQuestionStatus);
 
 module.exports = router;

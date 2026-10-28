@@ -58,3 +58,4 @@ watchSchema.virtual('maxPriceINR').get(function () {
 watchSchema.index({ user: 1, active: 1 });
 
 module.exports = mongoose.model('Watch', watchSchema);
+

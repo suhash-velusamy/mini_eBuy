@@ -26,6 +26,7 @@ import { useSocket } from '../context/SocketContext';
 import StatusBadge from '../components/StatusBadge';
 import CountdownTimer from '../components/CountdownTimer';
 import BidHistory from '../components/BidHistory';
+import AuctionQA from '../components/AuctionQA';
 
 const formatINR = (paise) => {
   if (!paise) return '₹0';
@@ -619,6 +620,14 @@ const AuctionDetails = () => {
               onAcceptBid={openApproveModal}
               onRejectBid={openRejectModal}
               actionLoading={actionLoading}
+            />
+
+            {/* Phase 4: Community Questions & Answers (Q&A) Section */}
+            <AuctionQA
+              auctionId={id}
+              isSeller={isSeller}
+              isAuthenticated={isAuthenticated}
+              isAuctionClosed={auction.status !== 'Active'}
             />
           </div>
 

@@ -87,4 +87,35 @@ export const auctionApi = {
     const res = await api.delete(`/api/auctions/${id}/auto-bid`);
     return res.data;
   },
+
+  // Phase 4: Q&A API
+  getQuestions: async (id) => {
+    const res = await api.get(`/api/auctions/${id}/questions`);
+    return res.data;
+  },
+
+  askQuestion: async (id, text) => {
+    const res = await api.post(`/api/auctions/${id}/questions`, { text });
+    return res.data;
+  },
+
+  checkDuplicateQuestion: async (id, text) => {
+    const res = await api.post(`/api/auctions/${id}/questions/check-duplicate`, { text });
+    return res.data;
+  },
+
+  answerQuestion: async (id, qId, answer) => {
+    const res = await api.post(`/api/auctions/${id}/questions/${qId}/answer`, { answer });
+    return res.data;
+  },
+
+  flagQuestion: async (id, qId) => {
+    const res = await api.post(`/api/auctions/${id}/questions/${qId}/flag`);
+    return res.data;
+  },
+
+  updateQuestionStatus: async (id, qId, status) => {
+    const res = await api.patch(`/api/auctions/${id}/questions/${qId}/status`, { status });
+    return res.data;
+  },
 };

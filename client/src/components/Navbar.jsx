@@ -14,6 +14,8 @@ import {
   RefreshCw,
   Shield,
   Tag,
+  Bot,
+  Sparkles,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import NotificationBell from './NotificationBell';
@@ -123,6 +125,15 @@ const Navbar = () => {
                     }`}
                   >
                     Saved Wants
+                  </Link>
+                  <Link
+                    to="/assistant"
+                    className={`transition-colors hover:text-blue-600 flex items-center gap-1.5 ${
+                      location.pathname === '/assistant' ? 'text-blue-600 font-bold' : ''
+                    }`}
+                  >
+                    <Bot className="w-3.5 h-3.5 text-blue-500" />
+                    <span>AI Assistant</span>
                   </Link>
                 </>
               )}

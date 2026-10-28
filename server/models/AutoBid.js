@@ -42,3 +42,4 @@ autoBidSchema.index({ item: 1, user: 1 }, { unique: true });
 autoBidSchema.index({ item: 1, active: 1, maxAmount: -1, createdAt: 1 });
 
 module.exports = mongoose.model('AutoBid', autoBidSchema);
+

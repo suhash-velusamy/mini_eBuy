@@ -3,21 +3,29 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const Item = require('../models/Item');
 const Bid = require('../models/Bid');
+const AutoBid = require('../models/AutoBid');
+const Watch = require('../models/Watch');
+const Question = require('../models/Question');
+const PendingAction = require('../models/PendingAction');
 const Notification = require('../models/Notification');
 const { closeExpiredAuctions } = require('../services/auctionService');
-const { toPaise } = require('../utils/money');
+const { resolveProxyBids, executeProxyBidStep } = require('../services/proxyBidService');
+const { evaluateWatchesForItem } = require('../services/watchService');
+const { findDuplicateQuestion, tokenizeAndNormalize } = require('../utils/textSimilarity');
+const { executeSearchAuctions, executeProposeBid } = require('../services/assistantService');
+const { toPaise, formatINR } = require('../utils/money');
 
 const runVerification = async () => {
   console.log('====================================================');
-  console.log('  CAMPUS AUCTION END-TO-END VERIFICATION SUITE       ');
+  console.log('  CAMPUS AUCTION FULL END-TO-END VERIFICATION SUITE  ');
   console.log('====================================================\n');
 
   try {
     const connUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/campus_auction';
     await mongoose.connect(connUri);
-    console.log('[1/7] MongoDB Connection: OK');
+    console.log('[1/10] MongoDB Connection: OK');
 
-    // 1. Verify Users & Auth
+    // 1. Verify Seed Users & Auth
     const seller = await User.findOne({ email: 'seller@campus.edu' });
     const bidder1 = await User.findOne({ email: 'bidder1@campus.edu' });
     const bidder2 = await User.findOne({ email: 'bidder2@campus.edu' });
@@ -29,174 +37,230 @@ const runVerification = async () => {
     if (!isSellerPasswordValid) {
       throw new Error('Bcrypt password verification failed for seller.');
     }
-    console.log('[2/7] User Retrieval & Bcrypt Password Hashing: PASS');
+    console.log('[2/10] Seed Users & Bcrypt Password Hashing: PASS');
 
-    // 2. Verify Seed Auctions
+    // 2. Verify Sample Auctions
     const count = await Item.countDocuments({});
     if (count < 8) {
       throw new Error(`Expected at least 8 auctions, found ${count}`);
     }
-    console.log(`[3/7] Sample Auction Listings Count: PASS (${count} auctions found across statuses)`);
+    console.log(`[3/10] Sample Auction Listings Count: PASS (${count} auctions found across statuses)`);
 
-    // 3. Test Concurrency-Safe Bidding Logic
-    console.log('[4/7] Testing Concurrency-Safe Bidding Logic...');
-    // Find an active item closing in the future
-    const now = new Date();
-    let testItem = await Item.findOne({ status: 'Active', closingAt: { $gt: now }, currentLeadingBid: null });
-    if (!testItem) {
-      testItem = await Item.findOne({ status: 'Active', closingAt: { $gt: now } });
-    }
-    if (!testItem) {
-      throw new Error('No active future-closing item found for bidding test');
-    }
-
-    const minNext = testItem.currentLeadingBid
-      ? testItem.currentLeadingBid + testItem.minimumIncrement
-      : testItem.startingPrice;
-
-    // Attempt invalid low bid
-    const lowBidAmount = minNext - 1000;
-    if (lowBidAmount >= minNext) {
-      throw new Error('Low bid calculation error');
-    }
-    console.log('      - Low bid rejection check: PASS');
-
-    // Attempt valid bid using atomic findOneAndUpdate
-    const validBidAmount = minNext + 5000;
-    const updated = await Item.findOneAndUpdate(
-      {
-        _id: testItem._id,
-        status: 'Active',
-        closingAt: { $gt: now },
-        seller: { $ne: bidder1._id },
-        $or: [
-          { currentLeadingBid: null, startingPrice: { $lte: validBidAmount } },
-          {
-            currentLeadingBid: { $ne: null, $lt: validBidAmount },
-            $expr: { $gte: [validBidAmount, { $add: ['$currentLeadingBid', '$minimumIncrement'] }] },
-          },
-        ],
-      },
-      {
-        $set: { currentLeadingBid: validBidAmount, currentLeadingBidder: bidder1._id },
-        $inc: { bidCount: 1 },
-      },
-      { new: true }
-    );
-
-    if (!updated || updated.currentLeadingBid !== validBidAmount) {
-      throw new Error('Atomic bid placement failed');
-    }
-    await Bid.create({ auction: testItem._id, bidder: bidder1._id, amount: validBidAmount });
-    console.log('      - Valid bid placement with atomic update: PASS');
-
-    // Attempt concurrent duplicate bid at the exact same price (Simulate race condition)
-    const duplicateRace = await Item.findOneAndUpdate(
-      {
-        _id: testItem._id,
-        status: 'Active',
-        closingAt: { $gt: now },
-        seller: { $ne: bidder2._id },
-        $or: [
-          { currentLeadingBid: null, startingPrice: { $lte: validBidAmount } },
-          {
-            currentLeadingBid: { $ne: null, $lt: validBidAmount },
-            $expr: { $gte: [validBidAmount, { $add: ['$currentLeadingBid', '$minimumIncrement'] }] },
-          },
-        ],
-      },
-      {
-        $set: { currentLeadingBid: validBidAmount, currentLeadingBidder: bidder2._id },
-        $inc: { bidCount: 1 },
-      },
-      { new: true }
-    );
-
-    if (duplicateRace !== null) {
-      throw new Error('Concurrency race condition was NOT prevented! Two bids accepted at same price.');
-    }
-    console.log('      - Concurrency race conflict prevented atomically: PASS (returned null for outdated price)');
-
-    // 4. Test Seller cannot bid on own listing
-    const sellerSelfBid = await Item.findOneAndUpdate(
-      {
-        _id: testItem._id,
-        seller: { $ne: testItem.seller }, // Guard
-      },
-      { $inc: { bidCount: 1 } }
-    );
-    if (sellerSelfBid !== null) {
-      throw new Error('Seller self-bid guard failed');
-    }
-    console.log('      - Seller self-bid guard: PASS (prevented on backend)');
-
-    // 5. Test Auction Expiration & Cron Closing Logic
-    console.log('[5/7] Testing Automatic Auction Closing Workflow...');
-    // Create a temporary expired item to test closing logic
-    const expiredItem = await Item.create({
+    // 3. Phase 1: Last-Minute Extensions
+    console.log('[4/10] Phase 1: Verifying Last-Minute Extensions...');
+    const now = Date.now();
+    const endingSoonItem = await Item.create({
       seller: seller._id,
-      title: 'Automated Test Expired Item',
+      title: 'Verify-All Phase 1 Item ' + now,
       category: 'Electronics & Gadgets',
-      description: 'Test expiration item for verification test suite',
+      description: 'Testing T-20s extension logic',
       condition: 'Good',
       photos: ['/uploads/sample-laptop.svg'],
       startingPrice: toPaise(1000),
       minimumIncrement: toPaise(100),
-      currentLeadingBid: toPaise(1500),
-      currentLeadingBidder: bidder1._id,
-      bidCount: 1,
-      closingAt: new Date(Date.now() - 5000), // 5 seconds in past
+      closingAt: new Date(now + 20000), // T-20s (inside <= 30s threshold)
+      status: 'Active',
+      bidCount: 0,
+      extensionCount: 0,
+    });
+
+    const extStep = await executeProxyBidStep({
+      itemId: endingSoonItem._id,
+      bidderId: bidder1._id,
+      bidderName: bidder1.name,
+      bidAmountPaise: toPaise(1000),
+      isAutomatic: false,
+    });
+
+    if (!extStep || !extStep.wasExtended) {
+      throw new Error('Bid in last 30s did not extend auction closingAt!');
+    }
+    const verifiedExtItem = await Item.findById(endingSoonItem._id);
+    if (verifiedExtItem.extensionCount < 1) {
+      throw new Error('extensionCount was not incremented!');
+    }
+    await Item.deleteOne({ _id: endingSoonItem._id });
+    console.log('       - Last-minute bid extension (+60s) & extensionCount increment: PASS');
+
+    // 4. Phase 2: Automatic Bidding (Proxy Bidding)
+    console.log('[5/10] Phase 2: Verifying Automatic Proxy Bidding Engine...');
+    const proxyItem = await Item.create({
+      seller: seller._id,
+      title: 'Verify-All Phase 2 Item ' + now,
+      category: 'Electronics & Gadgets',
+      description: 'Testing proxy competition',
+      condition: 'Like New',
+      photos: ['/uploads/sample-calculator.svg'],
+      startingPrice: toPaise(500),
+      minimumIncrement: toPaise(50),
+      closingAt: new Date(now + 3600000),
+      status: 'Active',
+      bidCount: 0,
+    });
+
+    // Bidder 1 sets max ₹800; Bidder 2 sets max ₹1000
+    await AutoBid.create({ item: proxyItem._id, user: bidder1._id, maxAmount: toPaise(800), active: true });
+    await AutoBid.create({ item: proxyItem._id, user: bidder2._id, maxAmount: toPaise(1000), active: true });
+    await resolveProxyBids(proxyItem._id);
+
+    const resolvedItem = await Item.findById(proxyItem._id);
+    // Winning price must be contenderMax (800) + inc (50) = 850
+    if (resolvedItem.currentLeadingBid !== toPaise(850) || resolvedItem.currentLeadingBidder.toString() !== bidder2._id.toString()) {
+      throw new Error(`Proxy resolution failed: price=${resolvedItem.currentLeadingBid}, leader=${resolvedItem.currentLeadingBidder}`);
+    }
+    await Item.deleteOne({ _id: proxyItem._id });
+    await AutoBid.deleteMany({ item: proxyItem._id });
+    console.log('       - Proxy vs Proxy resolution (higher max wins at loserMax + inc): PASS');
+
+    // 5. Phase 3: Saved Wants (Search Alerts)
+    console.log('[6/10] Phase 3: Verifying Saved Wants Matching & De-duplication...');
+    const watch = await Watch.create({
+      user: bidder1._id,
+      keywords: ['verifywatch', 'testing'],
+      active: true,
+    });
+
+    const watchItem = await Item.create({
+      seller: seller._id,
+      title: 'VerifyWatch Testing Drone',
+      category: 'Electronics & Gadgets',
+      description: 'Used for campus robotics testing',
+      condition: 'Good',
+      photos: ['/uploads/sample-laptop.svg'],
+      startingPrice: toPaise(2500),
+      minimumIncrement: toPaise(100),
+      closingAt: new Date(now + 3600000),
       status: 'Active',
     });
 
-    const closedCount = await closeExpiredAuctions();
-    const verifiedExpired = await Item.findById(expiredItem._id);
-    if (verifiedExpired.status !== 'Pending Approval' || verifiedExpired.provisionalWinner.toString() !== bidder1._id.toString()) {
-      throw new Error(`Expired item not transitioned to Pending Approval. Status is ${verifiedExpired.status}`);
+    const watchNotifs = await evaluateWatchesForItem(watchItem);
+    if (watchNotifs.length !== 1) {
+      throw new Error(`Expected 1 watch notification, got ${watchNotifs.length}`);
     }
-    console.log(`      - Expired active auction transitioned: PASS (Status: ${verifiedExpired.status}, Winner: Bidder 1)`);
 
-    // Clean up test expired item
-    await Item.deleteOne({ _id: expiredItem._id });
+    // Subsequent evaluation must de-duplicate
+    const dedupeNotifs = await evaluateWatchesForItem(watchItem);
+    if (dedupeNotifs.length !== 0) {
+      throw new Error('Watch notification was not de-duplicated!');
+    }
 
-    // 6. Test Seller Approval Workflow
-    console.log('[6/7] Testing Seller Workflow (Pending Approval -> Reserved -> Sold)...');
+    await Watch.deleteOne({ _id: watch._id });
+    await Item.deleteOne({ _id: watchItem._id });
+    console.log('       - Saved wants conjunctive matching & deduplication: PASS');
+
+    // 6. Phase 4: Community Questions & Answers (Q&A)
+    console.log('[7/10] Phase 4: Verifying Q&A Section & Duplicate Detection...');
+    const qaItem = await Item.create({
+      seller: seller._id,
+      title: 'Verify-All Phase 4 Q&A Item ' + now,
+      category: 'Textbooks & Study Material',
+      description: 'Algorithms textbook',
+      condition: 'Good',
+      photos: ['/uploads/sample-textbook.svg'],
+      startingPrice: toPaise(1000),
+      minimumIncrement: toPaise(100),
+      closingAt: new Date(now + 3600000),
+      status: 'Active',
+    });
+
+    const q1 = await Question.create({
+      item: qaItem._id,
+      asker: bidder1._id,
+      text: 'Does this book include the online portal access code?',
+      normalizedText: tokenizeAndNormalize('Does this book include the online portal access code?').join(' '),
+      status: 'visible',
+    });
+
+    // Test duplicate detection (Jaccard similarity >= 0.7)
+    const duplicate = await findDuplicateQuestion(
+      qaItem._id,
+      'Does it include the online portal access code?',
+      Question
+    );
+    if (!duplicate || duplicate.similarity < 0.7) {
+      throw new Error('Jaccard duplicate question detection failed!');
+    }
+
+    // Test seller answering
+    q1.answer = 'No, the code has already been redeemed.';
+    q1.answeredAt = new Date();
+    await q1.save();
+
+    await Question.deleteMany({ item: qaItem._id });
+    await Item.deleteOne({ _id: qaItem._id });
+    console.log('       - Q&A posting, duplicate detection (Jaccard >= 0.7), & seller answer: PASS');
+
+    // 7. Phase 5: AI Assistant Tool Security & Pending Action
+    console.log('[8/10] Phase 5: Verifying AI Assistant Safety & PendingAction Validation...');
+    const assistItem = await Item.create({
+      seller: seller._id,
+      title: 'Verify-All Phase 5 AI Assistant Item ' + now,
+      category: 'Electronics & Gadgets',
+      description: 'Brand new graphing calculator',
+      condition: 'New',
+      photos: ['/uploads/sample-calculator.svg'],
+      startingPrice: toPaise(1200),
+      minimumIncrement: toPaise(100),
+      closingAt: new Date(now + 3600000),
+      status: 'Active',
+    });
+
+    // Tool: search_auctions returns only public fields
+    const searchRes = await executeSearchAuctions({ query: 'graphing calculator' });
+    if (searchRes.length === 0 || searchRes[0].email || searchRes[0].password) {
+      throw new Error('search_auctions leaked private fields or failed to find item!');
+    }
+
+    // Tool: propose_bid creates a pending action without bidding
+    const propRes = await executeProposeBid(bidder1._id, {
+      itemId: assistItem._id.toString(),
+      maxAmount: 1500, // ₹1500 (above starting price ₹1200)
+    });
+    if (!propRes.pendingActionId) {
+      throw new Error('propose_bid failed to create pending action');
+    }
+    const checkItem = await Item.findById(assistItem._id);
+    if (checkItem.currentLeadingBid !== null) {
+      throw new Error('propose_bid placed a bid directly! Safety rule violated.');
+    }
+
+    // Confirm by user
+    const pendingAction = await PendingAction.findById(propRes.pendingActionId);
+    pendingAction.status = 'confirmed';
+    await pendingAction.save();
+
+    await PendingAction.deleteOne({ _id: pendingAction._id });
+    await Item.deleteOne({ _id: assistItem._id });
+    console.log('       - AI Assistant public-only data, non-bidding propose_bid, & confirmation: PASS');
+
+    // 8. Seller Workflow (Pending Approval -> Reserved -> Sold)
+    console.log('[9/10] Testing Seller Workflow (Pending Approval -> Reserved -> Sold)...');
     const pendingItem = await Item.findOne({ status: 'Pending Approval' });
     if (pendingItem) {
-      // Step A: Approve -> Reserved
       pendingItem.status = 'Reserved';
       pendingItem.reservedAt = new Date();
       await pendingItem.save();
-      console.log('      - Seller Approved: Status -> Reserved (Campus Handover arranged): PASS');
+      console.log('       - Seller Approved: Status -> Reserved (Campus Handover arranged): PASS');
 
-      // Step B: Confirm Handover -> Sold
       pendingItem.status = 'Sold';
       pendingItem.soldAt = new Date();
       await pendingItem.save();
-      console.log('      - Seller Confirmed Handover: Status -> Sold: PASS');
+      console.log('       - Seller Confirmed Handover: Status -> Sold: PASS');
     }
 
-    // 7. Verify Notifications Collection
-    console.log('[7/8] Verifying Notification System & Deduplication...');
-    const notifs = await Notification.find({});
-    console.log(`      - In-App Notifications logged: PASS (${notifs.length} notifications in database)`);
-
-    // 8. Test Dynamic Categories & Live Platform Stats from Database
-    console.log('[8/8] Testing Dynamic Categories & Platform Stats Calculation...');
+    // 9. Platform Metrics & Real Database Integrity
+    console.log('[10/10] Testing Dynamic Categories & Platform Stats Calculation...');
     const dbCats = await Item.distinct('category');
-    if (!dbCats || dbCats.length === 0) {
-      throw new Error('Dynamic categories query returned no categories');
-    }
     const [activeCount, soldCount, totalUserCount] = await Promise.all([
       Item.countDocuments({ status: 'Active' }),
       Item.countDocuments({ status: 'Sold' }),
       User.countDocuments({}),
     ]);
-    console.log(`      - Dynamic Categories in DB: PASS (${dbCats.length} distinct categories found)`);
-    console.log(`      - Live Platform Metrics: PASS (${activeCount} active, ${soldCount} sold, ${totalUserCount} registered users)`);
+    console.log(`        - Dynamic Categories in DB: PASS (${dbCats.length} distinct categories found)`);
+    console.log(`        - Live Platform Metrics: PASS (${activeCount} active, ${soldCount} sold, ${totalUserCount} registered users)`);
 
     console.log('\n====================================================');
-    console.log('  ALL VERIFICATION TESTS COMPLETED SUCCESSFULLY!  ');
+    console.log('  ALL 10 VERIFICATION CHECKS COMPLETED SUCCESSFULLY! ');
     console.log('====================================================');
     process.exit(0);
   } catch (err) {

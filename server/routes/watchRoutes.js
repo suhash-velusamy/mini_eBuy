@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { requireAuth } = require('../middleware/authMiddleware');
+const { protect } = require('../middleware/auth');
 const {
   createWatch,
   getMyWatches,
@@ -9,7 +9,7 @@ const {
 } = require('../controllers/watchController');
 
 // All watch endpoints require authentication
-router.use(requireAuth);
+router.use(protect);
 
 router.post('/', createWatch);
 router.get('/', getMyWatches);

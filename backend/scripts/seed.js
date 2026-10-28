@@ -6,6 +6,9 @@ const User = require('../models/User');
 const Item = require('../models/Item');
 const Bid = require('../models/Bid');
 const Notification = require('../models/Notification');
+const AutoBid = require('../models/AutoBid');
+const Watch = require('../models/Watch');
+const Question = require('../models/Question');
 const { toPaise } = require('../utils/money');
 
 const uploadsDir = path.join(__dirname, '..', 'uploads');
@@ -61,6 +64,9 @@ const seedDatabase = async () => {
     await Item.deleteMany({});
     await Bid.deleteMany({});
     await Notification.deleteMany({});
+    await AutoBid.deleteMany({});
+    await Watch.deleteMany({});
+    await Question.deleteMany({});
 
     // 1. Create Users
     console.log('[Seed] Creating demo campus users...');
@@ -332,9 +338,93 @@ const seedDatabase = async () => {
       cancellationReason: 'Decided to gift item to roommate instead',
     });
 
+    // 3. Seed Phase 2: Automatic Bidders (Proxy Bidding) on Item 2 (Casio Calculator)
+    console.log('[Seed] Seeding proxy auto-bidders...');
+    await AutoBid.create({
+      item: item2._id,
+      user: bidder1._id,
+      maxAmount: toPaise(1100), // Alice max ₹1,100
+      active: true,
+      createdAt: new Date(now - 10 * 60 * 1000),
+    });
+
+    await AutoBid.create({
+      item: item2._id,
+      user: bidder2._id,
+      maxAmount: toPaise(1350), // Bob max ₹1,350
+      active: true,
+      createdAt: new Date(now - 5 * 60 * 1000),
+    });
+
+    // 4. Seed Phase 3: Saved Wants (Search Alerts)
+    console.log('[Seed] Seeding standing search alerts (Saved Wants)...');
+    await Watch.create({
+      user: bidder1._id,
+      keywords: ['scientific', 'calculator'],
+      category: 'Electronics & Gadgets',
+      maxPrice: toPaise(1000), // Up to ₹1,000
+      active: true,
+    });
+
+    await Watch.create({
+      user: bidder2._id,
+      keywords: ['hero', 'bicycle', 'sprint'],
+      category: 'Bicycles & Mobility',
+      maxPrice: toPaise(4500), // Up to ₹4,500
+      active: true,
+    });
+
+    // 5. Seed Phase 4: Community Questions & Answers (Q&A) on Item 1
+    console.log('[Seed] Seeding community Q&A inquiries and answers...');
+    // Q1: Answered
+    await Question.create({
+      item: item1._id,
+      asker: bidder1._id,
+      text: 'Does this cycle include the original combination wire lock and bell?',
+      answer: 'Yes! Both the combination cable lock and the handlebar bell are included.',
+      answeredAt: new Date(now - 20 * 60 * 1000),
+      normalizedText: 'cycle include original combination wire lock bell',
+      status: 'visible',
+      createdAt: new Date(now - 45 * 60 * 1000),
+    });
+
+    // Q2: Answered
+    await Question.create({
+      item: item1._id,
+      asker: bidder2._id,
+      text: 'Are the Shimano disc brake pads recently replaced or serviced?',
+      answer: 'Yes, disc brake pads were serviced last month at the campus cycle repair shop.',
+      answeredAt: new Date(now - 10 * 60 * 1000),
+      normalizedText: 'shimano disc brake pads recently replaced serviced',
+      status: 'visible',
+      createdAt: new Date(now - 30 * 60 * 1000),
+    });
+
+    // Q3: Flagged (Auto-hidden with 3 flags)
+    await Question.create({
+      item: item1._id,
+      asker: bidder3._id,
+      text: 'Can you give it for 500 rupees cash outside the auction platform right now?',
+      normalizedText: 'give rupees cash outside auction platform',
+      status: 'hidden',
+      flagCount: 3,
+      flaggedBy: [bidder1._id, bidder2._id, admin._id],
+      createdAt: new Date(now - 25 * 60 * 1000),
+    });
+
+    // Q4: Unanswered (awaiting seller response)
+    await Question.create({
+      item: item1._id,
+      asker: bidder1._id,
+      text: 'Can we meet outside the Central Library for a quick test ride before bidding ends?',
+      normalizedText: 'meet outside central library quick test ride bidding ends',
+      status: 'visible',
+      createdAt: new Date(now - 5 * 60 * 1000),
+    });
+
     console.log(`[Seed] Successfully seeded 10 auction listings across all states:
       1. Active (Ending in 2m, 3 bids): Hero Sprint Pro 21-Speed
-      2. Active (Ending in 3m, 0 bids): Casio FX-991EX Calculator
+      2. Active (Ending in 3m, 0 bids): Casio FX-991EX Calculator (2 proxy bidders)
       3. Active (Ending in 24h, 2 bids): CLRS Algorithms 4th Edition
       4. Active (Ending in 3d, 2 bids): Dell Inspiron 15 Core i5
       5. Active (Ending in 5d, 0 bids): Yonex Badminton Racket
@@ -342,7 +432,8 @@ const seedDatabase = async () => {
       7. Reserved (Winner: Bob Bidder): Chemistry Lab Coat & Kit
       8. Sold (Winner: Charlie Bidder): Prestige Electric Kettle
       9. Unsold: Wipro LED Study Lamp
-      10. Cancelled: Sony Bluetooth Headphones`);
+      10. Cancelled: Sony Bluetooth Headphones
+      Plus 2 Saved Wants and 4 Community Q&A items (including 1 auto-hidden flagged question).`);
 
     console.log('[Seed] Database seeding completed successfully!');
     process.exit(0);

@@ -15,6 +15,7 @@ const auctionRoutes = require('./routes/auctionRoutes');
 const userRoutes = require('./routes/userRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const watchRoutes = require('./routes/watchRoutes');
+const assistantRoutes = require('./routes/assistantRoutes');
 
 const app = express();
 const server = http.createServer(app);
@@ -61,6 +62,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/me', userRoutes); // CampusBid alias
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/watches', watchRoutes);
+app.use('/api/assistant', assistantRoutes);
 
 // Server time endpoint for clock synchronization
 app.get('/api/time', (req, res) => {
