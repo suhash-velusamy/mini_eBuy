@@ -324,12 +324,20 @@ const Home = () => {
               We couldn't find any listings matching your search or filters. Try adjusting your
               keywords, category, or price range.
             </p>
-            <button
-              onClick={handleResetFilters}
-              className="mt-5 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition-all"
-            >
-              Reset All Filters
-            </button>
+            <div className="flex flex-wrap items-center justify-center gap-3 mt-5">
+              <button
+                onClick={handleResetFilters}
+                className="px-5 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs shadow-sm transition-all"
+              >
+                Reset All Filters
+              </button>
+              <Link
+                to="/create-listing"
+                className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition-all"
+              >
+                + List an Item for Auction
+              </Link>
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">

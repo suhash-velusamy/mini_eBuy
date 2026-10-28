@@ -7,7 +7,6 @@ const {
   logout,
   getMe,
   switchRole,
-  getDemoAccounts,
 } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
 
@@ -35,6 +34,5 @@ router.patch('/me/notification-prefs', protect, (req, res) => {
     prefs: req.body,
   });
 });
-router.get('/demo-accounts', getDemoAccounts);
 
 module.exports = router;

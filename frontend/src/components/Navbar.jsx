@@ -200,7 +200,6 @@ const Navbar = () => {
                               <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${switchingRole ? 'animate-spin' : ''}`} />
                               <span>Switch to {user?.role === 'seller' ? 'Bidder Mode' : 'Seller Mode'}</span>
                             </span>
-                            <span className="text-[10px] text-blue-600 font-semibold">1-Click</span>
                           </button>
                         </div>
                       )}
@@ -312,7 +311,6 @@ const Navbar = () => {
                     <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${switchingRole ? 'animate-spin' : ''}`} />
                     <span>Switch to {user?.role === 'seller' ? 'Bidder Mode' : 'Seller Mode'}</span>
                   </span>
-                  <span className="text-[10px] text-blue-600 font-semibold">1-Click</span>
                 </button>
               )}
 
