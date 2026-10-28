@@ -15,6 +15,9 @@ const {
   rejectBid,
   confirmHandover,
   recordFailedPickup,
+  setAutoBid,
+  getAutoBids,
+  deleteAutoBid,
 } = require('../controllers/auctionController');
 const { protect } = require('../middleware/auth');
 const upload = require('../middleware/upload');
@@ -45,6 +48,11 @@ router.post('/', protect, upload.array('photos', 5), createAuction);
 router.patch('/:id', protect, updateAuction);
 router.post('/:id/cancel', protect, cancelAuction);
 router.post('/:id/bids', protect, bidLimiter, placeBid);
+
+// Phase 2 Automatic Proxy Bidding routes
+router.put('/:id/auto-bid', protect, bidLimiter, setAutoBid);
+router.get('/:id/auto-bids', getAutoBids);
+router.delete('/:id/auto-bid', protect, deleteAutoBid);
 
 // Seller action routes
 router.post('/:id/approve', protect, approveBid);

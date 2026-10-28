@@ -116,6 +116,14 @@ const Navbar = () => {
                   >
                     My Bids
                   </Link>
+                  <Link
+                    to="/wants"
+                    className={`transition-colors hover:text-blue-600 ${
+                      location.pathname === '/wants' ? 'text-blue-600 font-bold' : ''
+                    }`}
+                  >
+                    Saved Wants
+                  </Link>
                 </>
               )}
             </nav>

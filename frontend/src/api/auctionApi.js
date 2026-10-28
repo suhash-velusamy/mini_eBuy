@@ -72,4 +72,19 @@ export const auctionApi = {
     const res = await api.post(`/api/auctions/${id}/failed-pickup`, { reason });
     return res.data;
   },
+
+  setAutoBid: async (id, maxAmount) => {
+    const res = await api.put(`/api/auctions/${id}/auto-bid`, { maxAmount });
+    return res.data;
+  },
+
+  getAutoBids: async (id) => {
+    const res = await api.get(`/api/auctions/${id}/auto-bids`);
+    return res.data;
+  },
+
+  deleteAutoBid: async (id) => {
+    const res = await api.delete(`/api/auctions/${id}/auto-bid`);
+    return res.data;
+  },
 };

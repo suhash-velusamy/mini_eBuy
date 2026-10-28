@@ -17,6 +17,8 @@ import {
   XCircle,
   AlertTriangle,
   Handshake,
+  Zap,
+  Bot,
 } from 'lucide-react';
 import { auctionApi } from '../api/auctionApi';
 import { useAuth } from '../context/AuthContext';
@@ -50,6 +52,14 @@ const AuctionDetails = () => {
   const [pendingBidAmount, setPendingBidAmount] = useState(0);
   const [extensionNotice, setExtensionNotice] = useState('');
 
+  // Phase 2 Automatic Proxy Bidding State
+  const [autoBidders, setAutoBidders] = useState([]);
+  const [autoBidMaxInput, setAutoBidMaxInput] = useState('');
+  const [autoBidLoading, setAutoBidLoading] = useState(false);
+  const [autoBidError, setAutoBidError] = useState('');
+  const [autoBidSuccess, setAutoBidSuccess] = useState('');
+  const [showAutoBidForm, setShowAutoBidForm] = useState(false);
+
   // Seller Action Custom Modals (No native browser alerts/confirms!)
   const [showApproveModal, setShowApproveModal] = useState(false);
   const [targetBidToApprove, setTargetBidToApprove] = useState(null);
@@ -68,9 +78,10 @@ const AuctionDetails = () => {
   const fetchAuctionAndBids = async () => {
     try {
       setLoading(true);
-      const [auctionRes, bidsRes] = await Promise.all([
+      const [auctionRes, bidsRes, autoBidsRes] = await Promise.all([
         auctionApi.getAuctionById(id),
         auctionApi.getAuctionBids(id),
+        auctionApi.getAutoBids(id),
       ]);
 
       if (auctionRes.success) {
@@ -85,6 +96,10 @@ const AuctionDetails = () => {
 
       if (bidsRes.success) {
         setBids(bidsRes.bids);
+      }
+
+      if (autoBidsRes.success) {
+        setAutoBidders(autoBidsRes.autoBidders || []);
       }
     } catch (err) {
       console.error('Error fetching auction details:', err);
@@ -160,8 +175,16 @@ const AuctionDetails = () => {
       }
     };
 
+    // Listen for Phase 2 autoBidUpdated event
+    const handleAutoBidUpdated = (data) => {
+      if (data.itemId === id || data.auctionId === id) {
+        setAutoBidders(data.autoBidders || []);
+      }
+    };
+
     socket.on('bid:placed', handleBidPlaced);
     socket.on('newBid', handleBidPlaced);
+    socket.on('autoBidUpdated', handleAutoBidUpdated);
     socket.on('auctionExtended', handleAuctionExtended);
     socket.on('auction:status_changed', handleStatusChanged);
 
@@ -169,6 +192,7 @@ const AuctionDetails = () => {
       socket.emit('leave:auction', id);
       socket.off('bid:placed', handleBidPlaced);
       socket.off('newBid', handleBidPlaced);
+      socket.off('autoBidUpdated', handleAutoBidUpdated);
       socket.off('auctionExtended', handleAuctionExtended);
       socket.off('auction:status_changed', handleStatusChanged);
     };
@@ -230,6 +254,66 @@ const AuctionDetails = () => {
   const addQuickIncrement = (incrementINR) => {
     const current = parseFloat(bidAmountInput) || minNextBidINR;
     setBidAmountInput(String(Math.max(minNextBidINR, current + incrementINR)));
+  };
+
+  // Phase 2: Automatic Proxy Bidding Handlers
+  const myAutoBid = autoBidders.find((ab) => String(ab.user?._id) === String(user?._id));
+
+  const handleSetAutoBid = async (e) => {
+    e.preventDefault();
+    setAutoBidError('');
+    setAutoBidSuccess('');
+
+    if (!isAuthenticated) {
+      navigate('/login', { state: { from: { pathname: `/auctions/${id}` } } });
+      return;
+    }
+
+    const numericMax = parseFloat(autoBidMaxInput);
+    if (isNaN(numericMax) || numericMax < minNextBidINR) {
+      setAutoBidError(`Your maximum bid must be at least ₹${minNextBidINR.toLocaleString('en-IN')}`);
+      return;
+    }
+
+    setAutoBidLoading(true);
+    try {
+      const res = await auctionApi.setAutoBid(id, numericMax);
+      if (res.success) {
+        setAutoBidSuccess(`🤖 Automatic bid set up to ₹${numericMax.toLocaleString('en-IN')}!`);
+        setAutoBidMaxInput('');
+        setShowAutoBidForm(false);
+        const [aRes, bRes, abRes] = await Promise.all([
+          auctionApi.getAuctionById(id),
+          auctionApi.getAuctionBids(id),
+          auctionApi.getAutoBids(id),
+        ]);
+        if (aRes.success) setAuction(aRes.auction);
+        if (bRes.success) setBids(bRes.bids);
+        if (abRes.success) setAutoBidders(abRes.autoBidders || []);
+      }
+    } catch (err) {
+      setAutoBidError(err.customMessage || err.message || 'Failed to set automatic bid.');
+    } finally {
+      setAutoBidLoading(false);
+    }
+  };
+
+  const handleCancelAutoBid = async () => {
+    setAutoBidError('');
+    setAutoBidSuccess('');
+    setAutoBidLoading(true);
+    try {
+      const res = await auctionApi.deleteAutoBid(id);
+      if (res.success) {
+        setAutoBidSuccess('Automatic bid cancelled successfully.');
+        const abRes = await auctionApi.getAutoBids(id);
+        if (abRes.success) setAutoBidders(abRes.autoBidders || []);
+      }
+    } catch (err) {
+      setAutoBidError(err.customMessage || err.message || 'Failed to cancel automatic bid.');
+    } finally {
+      setAutoBidLoading(false);
+    }
   };
 
   // Seller Custom Modal Action Handlers (Zero native window.confirm / alerts)
@@ -745,6 +829,110 @@ const AuctionDetails = () => {
                 </form>
               )}
 
+              {/* PHASE 2: AUTOMATIC PROXY BIDDING CONTROLS */}
+              {!isSeller && isAuthenticated && auction.status === 'Active' && (
+                <div className="pt-4 border-t border-slate-200/80 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Zap className="w-4 h-4 text-amber-500" />
+                      <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                        Automatic Bidding (Proxy)
+                      </h4>
+                    </div>
+                    <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                      Server Managed
+                    </span>
+                  </div>
+
+                  {autoBidError && (
+                    <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                      <span>{autoBidError}</span>
+                    </div>
+                  )}
+                  {autoBidSuccess && (
+                    <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-emerald-600" />
+                      <span>{autoBidSuccess}</span>
+                    </div>
+                  )}
+
+                  {myAutoBid ? (
+                    <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200/80 space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-600 font-medium">Your Current Maximum:</span>
+                        <span className="font-mono font-extrabold text-amber-900 text-base">
+                          ₹{myAutoBid.maxAmountINR.toLocaleString('en-IN')}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-amber-900/80 leading-relaxed">
+                        The system will automatically counter-bid on your behalf up to your max.
+                      </p>
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setShowAutoBidForm(!showAutoBidForm)}
+                          className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition-all flex items-center gap-1"
+                        >
+                          <TrendingUp className="w-3.5 h-3.5" />
+                          <span>Raise Maximum</span>
+                        </button>
+                        <button
+                          type="button"
+                          disabled={autoBidLoading}
+                          onClick={handleCancelAutoBid}
+                          className="px-3 py-1.5 rounded-xl border border-amber-300 hover:bg-amber-100 text-amber-900 font-semibold text-xs transition-all"
+                        >
+                          Cancel Auto-Bid
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500 leading-relaxed">
+                      Set a ceiling price. The system bids for you incrementally only when needed to keep you in the lead.
+                    </p>
+                  )}
+
+                  {(!myAutoBid || showAutoBidForm) && (
+                    <form onSubmit={handleSetAutoBid} className="space-y-2 pt-1">
+                      <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-xs text-slate-400">
+                            ₹
+                          </span>
+                          <input
+                            type="number"
+                            step="any"
+                            required
+                            value={autoBidMaxInput}
+                            onChange={(e) => setAutoBidMaxInput(e.target.value)}
+                            placeholder={`Enter max (min ₹${minNextBidINR})`}
+                            className="w-full pl-7 pr-3 py-2 text-xs rounded-xl border border-slate-300 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-600"
+                          />
+                        </div>
+                        <button
+                          type="submit"
+                          disabled={autoBidLoading}
+                          className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50"
+                        >
+                          {autoBidLoading ? (
+                            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <>
+                              <Zap className="w-3.5 h-3.5 text-amber-400" />
+                              <span>{myAutoBid ? 'Raise Max' : 'Set Auto-Bid'}</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      <span className="text-[10px] text-slate-400 block">
+                        Rule: Maximums can be raised, but never lowered. Maximums are public.
+                      </span>
+                    </form>
+                  )}
+                </div>
+              )}
+
               {/* Notice if user is the seller */}
               {isSeller && (
                 <div className="p-4 rounded-2xl bg-blue-50 border border-blue-200 text-blue-900 text-xs space-y-1">
@@ -769,6 +957,74 @@ const AuctionDetails = () => {
                   >
                     Sign In to Place a Bid
                   </Link>
+                </div>
+              )}
+            </div>
+
+            {/* Public Automatic Bidders Panel */}
+            <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-amber-500" />
+                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+                    Active Auto-Bidders ({autoBidders.length})
+                  </h3>
+                </div>
+                <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                  Public Maximums
+                </span>
+              </div>
+
+              <p className="text-xs text-slate-500 italic">
+                Maximums are public on this platform. The proxy system automatically outbids up to each bidder's limit.
+              </p>
+
+              {autoBidders.length === 0 ? (
+                <div className="py-4 text-center text-xs text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                  No automatic proxy bidders registered for this item yet.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {autoBidders.map((ab, idx) => {
+                    const isMe = user && String(ab.user?._id) === String(user._id);
+                    return (
+                      <div
+                        key={ab._id || idx}
+                        className={`p-3 rounded-2xl border flex items-center justify-between text-xs transition-all ${
+                          isMe
+                            ? 'bg-amber-50/80 border-amber-200 text-amber-900'
+                            : 'bg-slate-50 border-slate-100 text-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-xl bg-amber-100 text-amber-700 font-bold flex items-center justify-center text-xs">
+                            {idx + 1}
+                          </div>
+                          <div>
+                            <span className="font-bold text-slate-900 flex items-center gap-1.5">
+                              {ab.user?.name || 'Student Bidder'}
+                              {isMe && (
+                                <span className="text-[10px] bg-amber-200 text-amber-900 font-bold px-1.5 py-0.5 rounded-md">
+                                  You
+                                </span>
+                              )}
+                            </span>
+                            <span className="text-[10px] text-slate-400 block">
+                              Registered {new Date(ab.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] font-semibold text-slate-400 block uppercase">
+                            Ceiling Max
+                          </span>
+                          <span className="font-mono font-bold text-sm text-slate-900">
+                            ₹{ab.maxAmountINR?.toLocaleString('en-IN') || (ab.maxAmount / 100).toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

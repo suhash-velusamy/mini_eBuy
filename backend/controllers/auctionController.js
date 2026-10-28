@@ -1,9 +1,12 @@
 const Item = require('../models/Item');
 const Bid = require('../models/Bid');
 const User = require('../models/User');
+const AutoBid = require('../models/AutoBid');
 const Notification = require('../models/Notification');
 const { toPaise, formatINR } = require('../utils/money');
 const { emitToAuction, emitToUser } = require('../sockets/socketManager');
+const { resolveProxyBids, emitPublicAutoBids } = require('../services/proxyBidService');
+const { evaluateWatchesForItem } = require('../services/watchService');
 
 /**
  * @route   GET /api/auctions/categories
@@ -292,6 +295,11 @@ const createAuction = async (req, res) => {
       'name email profilePhoto'
     );
 
+    // Phase 3: Evaluate saved want watch alerts asynchronously
+    evaluateWatchesForItem(populatedItem).catch((err) =>
+      console.error('Watch evaluation error on create:', err.message)
+    );
+
     res.status(201).json({
       success: true,
       message: 'Auction listing created successfully.',
@@ -390,6 +398,11 @@ const updateAuction = async (req, res) => {
     }
 
     await item.save();
+
+    // Phase 3: Evaluate saved want watch alerts after listing details update
+    evaluateWatchesForItem(item).catch((err) =>
+      console.error('Watch evaluation error on update:', err.message)
+    );
 
     res.status(200).json({
       success: true,
@@ -799,6 +812,11 @@ const placeBid = async (req, res) => {
     emitToAuction(auctionId, 'bid:placed', bidPayload);
     emitToAuction(auctionId, 'newBid', bidPayload);
 
+    // Trigger Phase 2 Automatic Proxy Bidding resolution
+    resolveProxyBids(auctionId).catch((err) => {
+      console.error('Error resolving proxy bids after manual bid:', err.message);
+    });
+
     res.status(201).json({
       success: true,
       message: wasExtended
@@ -1147,6 +1165,202 @@ const recordFailedPickup = async (req, res) => {
   }
 };
 
+/**
+ * @route   PUT /api/auctions/:id/auto-bid
+ * @desc    Set or raise an automatic bid maximum for an auction (Phase 2 Proxy Bidding)
+ * @access  Private (Authenticated users only)
+ */
+const setAutoBid = async (req, res) => {
+  try {
+    const { maxAmount } = req.body;
+    const auctionId = req.params.id;
+    const userId = req.user._id;
+
+    if (!maxAmount || isNaN(maxAmount)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a valid numeric maximum bid amount in INR.',
+      });
+    }
+
+    const maxAmountPaise = toPaise(maxAmount);
+    if (maxAmountPaise <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Maximum bid must be greater than ₹0.',
+      });
+    }
+
+    const item = await Item.findById(auctionId);
+    if (!item) {
+      return res.status(404).json({
+        success: false,
+        message: 'Auction listing not found.',
+      });
+    }
+
+    // Rule: Seller cannot auto-bid on their own item
+    if (item.seller.toString() === userId.toString()) {
+      return res.status(400).json({
+        success: false,
+        message: 'You cannot set an automatic bid on your own listing.',
+      });
+    }
+
+    // Rule: Auction must be Active
+    if (item.status !== 'Active') {
+      return res.status(400).json({
+        success: false,
+        message: `This auction is no longer active. Current status: ${item.status}.`,
+      });
+    }
+
+    // Rule: Server closing time check
+    if (new Date(item.closingAt) <= new Date()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot set an automatic bid on a closed auction.',
+      });
+    }
+
+    // Rule: Max must be >= the minimum valid bid right now
+    const minNextPaise = item.currentLeadingBid
+      ? item.currentLeadingBid + item.minimumIncrement
+      : item.startingPrice;
+
+    if (maxAmountPaise < minNextPaise) {
+      return res.status(400).json({
+        success: false,
+        message: `Your maximum of ${formatINR(maxAmountPaise)} must be at least the minimum valid bid of ${formatINR(minNextPaise)}.`,
+      });
+    }
+
+    // Check if user already has an AutoBid record
+    let autoBid = await AutoBid.findOne({ item: auctionId, user: userId });
+
+    if (autoBid) {
+      // Rule: A user may RAISE their maximum, but never lower it
+      if (maxAmountPaise <= autoBid.maxAmount) {
+        return res.status(400).json({
+          success: false,
+          message: `You can only raise your automatic bid maximum (current: ${formatINR(autoBid.maxAmount)}), not lower it.`,
+        });
+      }
+      autoBid.maxAmount = maxAmountPaise;
+      autoBid.active = true;
+      await autoBid.save();
+    } else {
+      autoBid = await AutoBid.create({
+        item: auctionId,
+        user: userId,
+        maxAmount: maxAmountPaise,
+        active: true,
+      });
+    }
+
+    // Run proxy resolution algorithm
+    await resolveProxyBids(auctionId);
+
+    const freshItem = await Item.findById(auctionId);
+
+    res.status(200).json({
+      success: true,
+      message: `Automatic proxy bid set to ${formatINR(maxAmountPaise)} successfully.`,
+      autoBid: {
+        _id: autoBid._id,
+        maxAmount: autoBid.maxAmount,
+        maxAmountINR: autoBid.maxAmount / 100,
+        active: autoBid.active,
+      },
+      auction: freshItem,
+    });
+  } catch (error) {
+    console.error('Set auto-bid error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to set automatic bid.',
+    });
+  }
+};
+
+/**
+ * @route   GET /api/auctions/:id/auto-bids
+ * @desc    Get public list of active automatic bidders for an auction (Phase 2 Public Maximums)
+ * @access  Public
+ */
+const getAutoBids = async (req, res) => {
+  try {
+    const autoBids = await AutoBid.find({ item: req.params.id, active: true })
+      .populate('user', 'name')
+      .sort({ maxAmount: -1, createdAt: 1 });
+
+    const safeList = autoBids.map((ab) => ({
+      _id: ab._id,
+      maxAmount: ab.maxAmount,
+      maxAmountINR: ab.maxAmount / 100,
+      createdAt: ab.createdAt,
+      user: {
+        _id: ab.user?._id,
+        name: ab.user?.name || 'Anonymous Student',
+      },
+    }));
+
+    res.status(200).json({
+      success: true,
+      autoBidders: safeList,
+    });
+  } catch (error) {
+    console.error('Get auto-bids error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve automatic bidders.',
+    });
+  }
+};
+
+/**
+ * @route   DELETE /api/auctions/:id/auto-bid
+ * @desc    Cancel an automatic bid (Disallowed if user is leading)
+ * @access  Private
+ */
+const deleteAutoBid = async (req, res) => {
+  try {
+    const auctionId = req.params.id;
+    const userId = req.user._id;
+
+    const item = await Item.findById(auctionId);
+    if (!item) {
+      return res.status(404).json({ success: false, message: 'Auction not found.' });
+    }
+
+    // Rule: DELETE is NOT allowed once the user is leading
+    if (item.currentLeadingBidder && item.currentLeadingBidder.toString() === userId.toString()) {
+      return res.status(400).json({
+        success: false,
+        message: 'You cannot cancel your automatic bid while you are currently the leading bidder. Under campus auction rules, your current leading bid is legally binding until outbid.',
+      });
+    }
+
+    const autoBid = await AutoBid.findOne({ item: auctionId, user: userId });
+    if (!autoBid) {
+      return res.status(404).json({ success: false, message: 'No automatic bid found to cancel.' });
+    }
+
+    autoBid.active = false;
+    await autoBid.save();
+
+    await emitPublicAutoBids(auctionId);
+
+    res.status(200).json({
+      success: true,
+      message: 'Automatic bid has been cancelled.',
+    });
+  } catch (error) {
+    console.error('Delete auto-bid error:', error);
+    res.status(500).json({ success: false, message: 'Failed to cancel automatic bid.' });
+  }
+};
+
 module.exports = {
   getCategories,
   getAuctionStats,
@@ -1161,4 +1375,7 @@ module.exports = {
   rejectBid,
   confirmHandover,
   recordFailedPickup,
+  setAutoBid,
+  getAutoBids,
+  deleteAutoBid,
 };

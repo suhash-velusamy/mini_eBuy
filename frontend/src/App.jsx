@@ -16,6 +16,7 @@ import MyListings from './pages/MyListings';
 import MyBids from './pages/MyBids';
 import Notifications from './pages/Notifications';
 import SellerDashboard from './pages/SellerDashboard';
+import MyWants from './pages/MyWants';
 import NotFound from './pages/NotFound';
 
 function App() {
@@ -71,6 +72,14 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <Notifications />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/wants"
+                  element={
+                    <ProtectedRoute>
+                      <MyWants />
                     </ProtectedRoute>
                   }
                 />

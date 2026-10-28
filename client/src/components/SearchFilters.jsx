@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, RotateCcw, ArrowUpDown } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Search, Filter, RotateCcw, ArrowUpDown, Bell, CheckCircle2 } from 'lucide-react';
 import { auctionApi } from '../api/auctionApi';
+import { watchApi } from '../api/watchApi';
+import { useAuth } from '../context/AuthContext';
 
 const CONDITIONS = ['All', 'New', 'Like New', 'Good', 'Fair', 'Poor'];
 
@@ -23,6 +26,37 @@ const STATUS_OPTIONS = [
 const SearchFilters = ({ filters, onFilterChange, onReset, dynamicCategories }) => {
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [categories, setCategories] = useState(dynamicCategories || ['All']);
+  const [saveAlertStatus, setSaveAlertStatus] = useState('');
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSaveSearchAlert = async () => {
+    if (!isAuthenticated) {
+      navigate('/login');
+      return;
+    }
+    const keywords = (filters.search || '').trim() ? [filters.search.trim()] : [];
+    if (keywords.length === 0 && (!filters.category || filters.category === 'All')) {
+      setSaveAlertStatus('Type keyword or select category');
+      setTimeout(() => setSaveAlertStatus(''), 3000);
+      return;
+    }
+    try {
+      const res = await watchApi.createWatch({
+        keywords: keywords.length > 0 ? keywords : [filters.category],
+        category: filters.category && filters.category !== 'All' ? filters.category : undefined,
+        condition: filters.condition && filters.condition !== 'All' ? filters.condition : undefined,
+        maxPrice: filters.maxPrice ? parseFloat(filters.maxPrice) : undefined,
+      });
+      if (res.success) {
+        setSaveAlertStatus('✓ Alert saved!');
+        setTimeout(() => setSaveAlertStatus(''), 3500);
+      }
+    } catch (err) {
+      setSaveAlertStatus(err.customMessage || err.message || 'Failed to save alert');
+      setTimeout(() => setSaveAlertStatus(''), 4000);
+    }
+  };
 
   useEffect(() => {
     if (dynamicCategories && dynamicCategories.length > 0) {
@@ -200,8 +234,18 @@ const SearchFilters = ({ filters, onFilterChange, onReset, dynamicCategories }) 
           </label>
         </div>
 
-        {/* Reset button */}
-        <div className="flex items-center md:pt-5 ml-auto">
+        {/* Save Search Alert & Reset buttons */}
+        <div className="flex items-center gap-2 md:pt-5 ml-auto">
+          <button
+            type="button"
+            onClick={handleSaveSearchAlert}
+            className="flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200/80 transition-all px-3 py-1.5 rounded-xl shadow-xs"
+            title="Get alerted whenever matching items are listed"
+          >
+            <Bell className="w-3.5 h-3.5 text-blue-600" />
+            <span>{saveAlertStatus || 'Save Search as Alert'}</span>
+          </button>
+
           <button
             onClick={onReset}
             className="flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-800 transition-colors px-2 py-1.5 rounded-lg hover:bg-slate-100"

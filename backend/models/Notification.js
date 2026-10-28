@@ -23,6 +23,9 @@ const notificationSchema = new mongoose.Schema(
         'SALE_COMPLETED',
         'LISTING_CANCELLED',
         'FAILED_PICKUP',
+        'WATCH_MATCH',
+        'NEW_QUESTION',
+        'QUESTION_ANSWERED',
       ],
       index: true,
     },
@@ -35,6 +38,11 @@ const notificationSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Item',
       required: true,
+    },
+    watch: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Watch',
+      default: null,
     },
     readAt: {
       type: Date,
