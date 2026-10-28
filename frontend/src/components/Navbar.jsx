@@ -11,7 +11,6 @@ import {
   Menu,
   X,
   ChevronDown,
-  RefreshCw,
   Shield,
   Tag,
   Bot,
@@ -21,13 +20,12 @@ import { useAuth } from '../context/AuthContext';
 import NotificationBell from './NotificationBell';
 
 const Navbar = () => {
-  const { user, switchRole, isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [switchingRole, setSwitchingRole] = useState(false);
   const dropdownRef = useRef(null);
 
   // Close dropdown on click outside
@@ -50,24 +48,6 @@ const Navbar = () => {
     await logout();
     setUserDropdownOpen(false);
     navigate('/login');
-  };
-
-  const handleSwitchRole = async () => {
-    try {
-      setSwitchingRole(true);
-      const nextRole = user?.role === 'seller' ? 'bidder' : 'seller';
-      await switchRole(nextRole);
-      setUserDropdownOpen(false);
-      if (nextRole === 'seller') {
-        navigate('/seller-dashboard');
-      } else {
-        navigate('/');
-      }
-    } catch (err) {
-      console.error('Role switch failed:', err);
-    } finally {
-      setSwitchingRole(false);
-    }
   };
 
   return (
@@ -167,14 +147,12 @@ const Navbar = () => {
                     </span>
                     <span
                       className={`px-1.5 py-0.5 rounded-md text-[9px] font-extrabold uppercase tracking-wider ${
-                        user?.role === 'seller'
-                          ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                          : user?.role === 'admin'
+                        user?.role === 'admin'
                           ? 'bg-purple-100 text-purple-800 border border-purple-200'
                           : 'bg-blue-100 text-blue-800 border border-blue-200'
                       }`}
                     >
-                      {user?.role || 'Bidder'}
+                      {user?.role === 'admin' ? 'Admin' : 'Student'}
                     </span>
                     <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-bold text-xs flex items-center justify-center">
                       {user?.name?.charAt(0).toUpperCase() || 'U'}
@@ -191,37 +169,18 @@ const Navbar = () => {
                           </p>
                           <span
                             className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
-                              user?.role === 'seller'
-                                ? 'bg-amber-100 text-amber-800'
-                                : user?.role === 'admin'
+                              user?.role === 'admin'
                                 ? 'bg-purple-100 text-purple-800'
                                 : 'bg-blue-100 text-blue-800'
                             }`}
                           >
-                            {user?.role || 'Bidder'}
+                            {user?.role === 'admin' ? 'Admin' : 'Student'}
                           </span>
                         </div>
                         <p className="text-[11px] text-slate-500 truncate">
                           {user?.email}
                         </p>
                       </div>
-
-                      {/* Fast Role Switcher */}
-                      {user?.role !== 'admin' && (
-                        <div className="p-2 border-b border-slate-100 bg-slate-50/70">
-                          <button
-                            type="button"
-                            disabled={switchingRole}
-                            onClick={handleSwitchRole}
-                            className="w-full py-1.5 px-3 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-800 flex items-center justify-between transition-all shadow-2xs hover:border-slate-300"
-                          >
-                            <span className="flex items-center gap-1.5">
-                              <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${switchingRole ? 'animate-spin' : ''}`} />
-                              <span>Switch to {user?.role === 'seller' ? 'Bidder Mode' : 'Seller Mode'}</span>
-                            </span>
-                          </button>
-                        </div>
-                      )}
 
                       <div className="py-1 text-sm font-medium text-slate-700">
                         <Link
@@ -308,30 +267,14 @@ const Navbar = () => {
                 </div>
                 <span
                   className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider ${
-                    user?.role === 'seller'
-                      ? 'bg-amber-100 text-amber-800'
-                      : user?.role === 'admin'
+                    user?.role === 'admin'
                       ? 'bg-purple-100 text-purple-800'
                       : 'bg-blue-100 text-blue-800'
                   }`}
                 >
-                  {user?.role || 'Bidder'}
+                  {user?.role === 'admin' ? 'Admin' : 'Student'}
                 </span>
               </div>
-
-              {user?.role !== 'admin' && (
-                <button
-                  type="button"
-                  disabled={switchingRole}
-                  onClick={handleSwitchRole}
-                  className="w-full py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-800 flex items-center justify-between transition-all"
-                >
-                  <span className="flex items-center gap-1.5">
-                    <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${switchingRole ? 'animate-spin' : ''}`} />
-                    <span>Switch to {user?.role === 'seller' ? 'Bidder Mode' : 'Seller Mode'}</span>
-                  </span>
-                </button>
-              )}
 
               <div className="space-y-1">
                 <Link

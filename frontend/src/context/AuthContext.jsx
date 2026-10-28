@@ -75,9 +75,9 @@ export const AuthProvider = ({ children }) => {
     <AuthContext.Provider
       value={{
         user,
-        role: user?.role || 'bidder',
-        isSeller: user?.role === 'seller' || user?.role === 'both' || user?.role === 'admin',
-        isBidder: user?.role === 'bidder' || user?.role === 'both' || user?.role === 'admin',
+        role: user?.role || 'student',
+        isSeller: !!user,
+        isBidder: !!user,
         isAdmin: user?.role === 'admin',
         isAuthenticated: !!user,
         loading,
