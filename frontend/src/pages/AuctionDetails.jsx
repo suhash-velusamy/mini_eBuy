@@ -16,6 +16,7 @@ import {
   Calendar,
   XCircle,
   AlertTriangle,
+  Handshake,
 } from 'lucide-react';
 import { auctionApi } from '../api/auctionApi';
 import { useAuth } from '../context/AuthContext';
@@ -44,7 +45,15 @@ const AuctionDetails = () => {
   const [bidError, setBidError] = useState('');
   const [bidSuccess, setBidSuccess] = useState('');
 
-  // Seller Action Modals
+  // Bidder Confirmation Modal
+  const [showBidConfirmModal, setShowBidConfirmModal] = useState(false);
+  const [pendingBidAmount, setPendingBidAmount] = useState(0);
+
+  // Seller Action Custom Modals (No native browser alerts/confirms!)
+  const [showApproveModal, setShowApproveModal] = useState(false);
+  const [targetBidToApprove, setTargetBidToApprove] = useState(null);
+  const [handoverMeetingNote, setHandoverMeetingNote] = useState('');
+  const [showHandoverModal, setShowHandoverModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [showRejectModal, setShowRejectModal] = useState(false);
@@ -52,6 +61,8 @@ const AuctionDetails = () => {
   const [showFailedPickupModal, setShowFailedPickupModal] = useState(false);
   const [failedPickupReason, setFailedPickupReason] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState('');
+  const [actionSuccess, setActionSuccess] = useState('');
 
   const fetchAuctionAndBids = async () => {
     try {
@@ -153,8 +164,8 @@ const AuctionDetails = () => {
       : auction.startingPrice / 100
     : 0;
 
-  // Handle Bid Submission
-  const handlePlaceBid = async (e) => {
+  // Handle Bid Submission - Opens Confirmation Modal (Zero native browser prompts)
+  const handlePlaceBid = (e) => {
     e.preventDefault();
     setBidError('');
     setBidSuccess('');
@@ -170,17 +181,25 @@ const AuctionDetails = () => {
       return;
     }
 
+    setPendingBidAmount(numericAmount);
+    setShowBidConfirmModal(true);
+  };
+
+  const handleExecuteBid = async () => {
     setBiddingLoading(true);
+    setBidError('');
 
     try {
       const idempotencyKey = `bid_${id}_${user._id}_${Date.now()}`;
-      const res = await auctionApi.placeBid(id, numericAmount, idempotencyKey);
+      const res = await auctionApi.placeBid(id, pendingBidAmount, idempotencyKey);
 
       if (res.success) {
-        setBidSuccess(`🎉 Bid of ₹${numericAmount.toLocaleString('en-IN')} placed successfully!`);
+        setShowBidConfirmModal(false);
+        setBidSuccess(`🎉 Bid of ₹${pendingBidAmount.toLocaleString('en-IN')} placed successfully!`);
         // Updated state will also arrive via socket
       }
     } catch (err) {
+      setShowBidConfirmModal(false);
       setBidError(err.customMessage || err.message || 'Failed to place bid. Please try again.');
     } finally {
       setBiddingLoading(false);
@@ -192,93 +211,122 @@ const AuctionDetails = () => {
     setBidAmountInput(String(Math.max(minNextBidINR, current + incrementINR)));
   };
 
-  // Seller Action Handlers
-  const handleApproveBid = async (bidToApprove) => {
-    const amountToApprove = formatINR(
-      bidToApprove?.amount || auction?.currentLeadingBid || auction?.winningAmount
-    );
-    if (
-      !window.confirm(
-        `Are you sure you want to accept this bid of ${amountToApprove} and reserve the item for campus handover?`
-      )
-    ) {
-      return;
-    }
+  // Seller Custom Modal Action Handlers (Zero native window.confirm / alerts)
+  const openApproveModal = (bidToApprove) => {
+    setTargetBidToApprove(bidToApprove || null);
+    setActionError('');
+    setShowApproveModal(true);
+  };
+
+  const handleExecuteApprove = async () => {
     try {
       setActionLoading(true);
-      const res = await auctionApi.approveBid(id, 'Seller accepted bid');
+      setActionError('');
+      const note = handoverMeetingNote.trim() || 'Campus Handover arranged by seller';
+      const res = await auctionApi.approveBid(id, note);
       if (res.success) {
         setAuction(res.auction);
+        setShowApproveModal(false);
+        setActionSuccess('🎉 Winning bid approved! Item is now Reserved for campus handover.');
         const bidsRes = await auctionApi.getAuctionBids(id);
         if (bidsRes.success) setBids(bidsRes.bids);
       }
     } catch (err) {
-      alert(err.customMessage || err.message);
+      setActionError(err.customMessage || err.message || 'Failed to approve bid.');
     } finally {
       setActionLoading(false);
     }
   };
 
-  const handleRejectBid = async () => {
+  const openRejectModal = () => {
+    setActionError('');
+    setRejectReason('');
+    setShowRejectModal(true);
+  };
+
+  const handleExecuteReject = async () => {
     try {
       setActionLoading(true);
+      setActionError('');
       const res = await auctionApi.rejectBid(id, rejectReason);
       if (res.success) {
         setAuction(res.auction);
         setShowRejectModal(false);
         setRejectReason('');
+        setActionSuccess('Bid rejected. Auction leading price updated.');
         const bidsRes = await auctionApi.getAuctionBids(id);
         if (bidsRes.success) setBids(bidsRes.bids);
       }
     } catch (err) {
-      alert(err.customMessage || err.message);
+      setActionError(err.customMessage || err.message || 'Failed to reject bid.');
     } finally {
       setActionLoading(false);
     }
   };
 
-  const handleConfirmHandover = async () => {
-    if (!window.confirm('Confirm that the in-person campus handover has taken place and payment was received?')) {
-      return;
-    }
+  const openHandoverModal = () => {
+    setActionError('');
+    setShowHandoverModal(true);
+  };
+
+  const handleExecuteHandover = async () => {
     try {
       setActionLoading(true);
+      setActionError('');
       const res = await auctionApi.confirmHandover(id);
       if (res.success) {
         setAuction(res.auction);
+        setShowHandoverModal(false);
+        setActionSuccess('🤝 Campus handover confirmed! Item marked as Sold.');
       }
     } catch (err) {
-      alert(err.customMessage || err.message);
+      setActionError(err.customMessage || err.message || 'Failed to confirm handover.');
     } finally {
       setActionLoading(false);
     }
   };
 
-  const handleFailedPickup = async () => {
+  const openFailedPickupModal = () => {
+    setActionError('');
+    setFailedPickupReason('');
+    setShowFailedPickupModal(true);
+  };
+
+  const handleExecuteFailedPickup = async () => {
     try {
       setActionLoading(true);
+      setActionError('');
       const res = await auctionApi.recordFailedPickup(id, failedPickupReason);
       if (res.success) {
         setAuction(res.auction);
         setShowFailedPickupModal(false);
+        setActionSuccess('Failed pickup outcome recorded.');
       }
     } catch (err) {
-      alert(err.customMessage || err.message);
+      setActionError(err.customMessage || err.message || 'Failed to record pickup status.');
     } finally {
       setActionLoading(false);
     }
   };
 
-  const handleCancelAuction = async () => {
+  const openCancelModal = () => {
+    setActionError('');
+    setCancelReason('');
+    setShowCancelModal(true);
+  };
+
+  const handleExecuteCancel = async () => {
     try {
       setActionLoading(true);
+      setActionError('');
       const res = await auctionApi.cancelAuction(id, cancelReason);
       if (res.success) {
         setAuction(res.auction);
         setShowCancelModal(false);
+        setActionSuccess('Auction listing has been cancelled.');
       }
     } catch (err) {
-      alert(err.customMessage || err.message);
+      setActionError(err.customMessage || err.message || 'Failed to cancel auction.');
     } finally {
       setActionLoading(false);
     }
@@ -463,8 +511,8 @@ const AuctionDetails = () => {
               bids={bids}
               currentWinningBidderId={auction.currentLeadingBidder}
               canManageBids={isSeller && (auction.status === 'Active' || auction.status === 'Pending Approval')}
-              onAcceptBid={handleApproveBid}
-              onRejectBid={() => setShowRejectModal(true)}
+              onAcceptBid={openApproveModal}
+              onRejectBid={openRejectModal}
               actionLoading={actionLoading}
             />
           </div>
@@ -692,6 +740,23 @@ const AuctionDetails = () => {
               )}
             </div>
 
+            {/* Success Feedback Banner */}
+            {actionSuccess && (
+              <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs flex items-center justify-between gap-3 shadow-sm animate-fadeIn">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+                  <span className="font-bold">{actionSuccess}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActionSuccess('')}
+                  className="text-emerald-700 hover:text-emerald-900 font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
             {/* SELLER CONTROL PANEL (Only visible to the seller of this listing) */}
             {isSeller && (
               <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-4">
@@ -722,7 +787,7 @@ const AuctionDetails = () => {
                         <div className="grid grid-cols-2 gap-2 pt-1">
                           <button
                             type="button"
-                            onClick={() => handleApproveBid()}
+                            onClick={() => openApproveModal()}
                             disabled={actionLoading}
                             className="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
                           >
@@ -732,7 +797,7 @@ const AuctionDetails = () => {
 
                           <button
                             type="button"
-                            onClick={() => setShowRejectModal(true)}
+                            onClick={openRejectModal}
                             disabled={actionLoading}
                             className="w-full py-2.5 px-3 rounded-xl border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
                           >
@@ -749,7 +814,7 @@ const AuctionDetails = () => {
 
                     <button
                       type="button"
-                      onClick={() => setShowCancelModal(true)}
+                      onClick={openCancelModal}
                       className="w-full py-2 px-3 rounded-xl border border-slate-200 hover:border-rose-200 text-slate-500 hover:text-rose-600 hover:bg-rose-50 text-xs font-semibold transition-all text-center"
                     >
                       Cancel Listing
@@ -776,16 +841,16 @@ const AuctionDetails = () => {
 
                     <button
                       type="button"
-                      onClick={() => handleApproveBid()}
+                      onClick={() => openApproveModal()}
                       disabled={actionLoading}
                       className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
                     >
                       <CheckCircle2 className="w-4 h-4" />
-                      <span>✓ Accept Winning Bid (Reserve Item)</span>
+                      <span>✓ Approve Winning Bid (Reserve Item)</span>
                     </button>
                     <button
                       type="button"
-                      onClick={() => setShowRejectModal(true)}
+                      onClick={openRejectModal}
                       disabled={actionLoading}
                       className="w-full py-2.5 px-4 rounded-xl border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
                     >
@@ -812,15 +877,16 @@ const AuctionDetails = () => {
 
                     <button
                       type="button"
-                      onClick={handleConfirmHandover}
+                      onClick={openHandoverModal}
                       disabled={actionLoading}
                       className="w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-md shadow-blue-500/20 flex items-center justify-center gap-1.5 disabled:opacity-50"
                     >
+                      <Handshake className="w-4 h-4" />
                       <span>🤝 Confirm Handover Completed (Mark as Sold)</span>
                     </button>
                     <button
                       type="button"
-                      onClick={() => setShowFailedPickupModal(true)}
+                      onClick={openFailedPickupModal}
                       disabled={actionLoading}
                       className="w-full py-2 px-4 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold transition-all disabled:opacity-50"
                     >
@@ -855,109 +921,462 @@ const AuctionDetails = () => {
         </div>
       </div>
 
-      {/* MODAL: Cancel Auction */}
+      {/* CUSTOM MODAL: 0. Bidder Confirm Bid Modal (Zero native browser prompts) */}
+      {showBidConfirmModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center flex-shrink-0">
+                <Gavel className="w-6 h-6" />
+              </div>
+              <div className="flex-1">
+                <h4 className="text-lg font-extrabold text-slate-900 tracking-tight">
+                  Confirm Your Bid
+                </h4>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Review your binding bid before placing it on the campus network.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowBidConfirmModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span>Auction Item</span>
+                <span className="font-bold text-slate-900 truncate max-w-[200px]">
+                  {auction.title}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span>Condition</span>
+                <span className="font-semibold text-slate-800">{auction.condition}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span>Current Highest Bid</span>
+                <span className="font-semibold text-slate-800">
+                  {formatINR(auction.currentLeadingBid || auction.startingPrice)}
+                </span>
+              </div>
+              <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  Your Verified Bid
+                </span>
+                <span className="font-mono font-extrabold text-2xl text-blue-700">
+                  ₹{pendingBidAmount.toLocaleString('en-IN')}
+                </span>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-100 text-[11px] text-blue-800 flex items-start gap-2">
+              <ShieldCheck className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
+              <span>
+                Campus bids are binding. If your bid wins at auction close or the seller accepts early, you commit to in-person campus handover.
+              </span>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={biddingLoading}
+                onClick={() => setShowBidConfirmModal(false)}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={biddingLoading}
+                onClick={handleExecuteBid}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-600/20 transition-all flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {biddingLoading ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <Gavel className="w-3.5 h-3.5" />
+                    <span>Confirm & Place Bid</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CUSTOM MODAL: 1. Approve / Accept Bid */}
+      {showApproveModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center flex-shrink-0">
+                <CheckCircle2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="text-lg font-extrabold text-slate-900 tracking-tight">
+                  Accept Winning Bid
+                </h4>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Reserve this item for the buyer and arrange campus handover.
+                </p>
+              </div>
+            </div>
+
+            {actionError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{actionError}</span>
+              </div>
+            )}
+
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span>Item</span>
+                <span className="font-bold text-slate-900 truncate max-w-[180px]">{auction.title}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span>Winning Buyer</span>
+                <span className="font-semibold text-slate-900">
+                  {targetBidToApprove?.bidder?.name || auction.provisionalWinner?.name || 'Leading Student Bidder'}
+                </span>
+              </div>
+              <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Accepted Price</span>
+                <span className="font-mono font-extrabold text-xl text-emerald-700">
+                  {formatINR(targetBidToApprove?.amount || auction.currentLeadingBid || auction.winningAmount)}
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-blue-600" />
+                <span>Handover Meeting Location (Optional)</span>
+              </label>
+              <input
+                type="text"
+                value={handoverMeetingNote}
+                onChange={(e) => setHandoverMeetingNote(e.target.value)}
+                placeholder="e.g. Central Library Front Gate, 4 PM"
+                className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+              />
+              <span className="text-[11px] text-slate-400 mt-1 block">
+                The buyer will receive an in-app alert with this pickup location.
+              </span>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => setShowApproveModal(false)}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={handleExecuteApprove}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-600/20 transition-all flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {actionLoading ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Confirm & Accept Bid</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CUSTOM MODAL: 2. Confirm Campus Handover (Mark as Sold) */}
+      {showHandoverModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center flex-shrink-0">
+                <Handshake className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="text-lg font-extrabold text-slate-900 tracking-tight">
+                  Confirm Campus Handover
+                </h4>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Complete transaction and mark item as permanently Sold.
+                </p>
+              </div>
+            </div>
+
+            {actionError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{actionError}</span>
+              </div>
+            )}
+
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span>Item</span>
+                <span className="font-bold text-slate-900 truncate max-w-[180px]">{auction.title}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span>Buyer</span>
+                <span className="font-semibold text-slate-900">
+                  {auction.provisionalWinner?.name || 'Student Buyer'}
+                </span>
+              </div>
+              <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Amount Paid</span>
+                <span className="font-mono font-extrabold text-xl text-blue-700">
+                  {formatINR(auction.winningAmount || auction.currentLeadingBid)}
+                </span>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-100 text-[11px] text-blue-800 flex items-start gap-2">
+              <ShieldCheck className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
+              <span>
+                By confirming, you verify that the in-person meeting took place and payment was received. Both accounts will be credited.
+              </span>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => setShowHandoverModal(false)}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors"
+              >
+                Not Yet
+              </button>
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={handleExecuteHandover}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-600/20 transition-all flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {actionLoading ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <Handshake className="w-3.5 h-3.5" />
+                    <span>Confirm Handover Done</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CUSTOM MODAL: 3. Reject Bid */}
+      {showRejectModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center flex-shrink-0">
+                <XCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="text-lg font-extrabold text-slate-900 tracking-tight">
+                  Reject Leading Bid
+                </h4>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Decline this bid and update the auction's leading price.
+                </p>
+              </div>
+            </div>
+
+            {actionError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{actionError}</span>
+              </div>
+            )}
+
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs flex items-center justify-between">
+              <span className="text-slate-500">Bid Amount to Reject:</span>
+              <span className="font-mono font-bold text-rose-600 text-base">
+                {formatINR(auction.currentLeadingBid || auction.winningAmount)}
+              </span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                Reason for Declining (Optional)
+              </label>
+              <textarea
+                rows="3"
+                placeholder="e.g. Bid amount was below expectations or bidder was unresponsive"
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                className="w-full p-3 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
+              />
+              <span className="text-[11px] text-slate-400 mt-1 block">
+                This reason will be sent to the bidder so they know why their bid was declined.
+              </span>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={() => setShowRejectModal(false)}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={handleExecuteReject}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 shadow-md shadow-rose-600/20 transition-all flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {actionLoading ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <XCircle className="w-3.5 h-3.5" />
+                    <span>Confirm Rejection</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CUSTOM MODAL: 4. Cancel Auction */}
       {showCancelModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
-            <h4 className="text-base font-bold text-slate-900">Cancel Auction Listing</h4>
-            <p className="text-xs text-slate-500">
-              Please provide a reason for cancelling this auction. Any active bidders will be notified.
-            </p>
-            <textarea
-              rows="3"
-              required
-              placeholder="e.g. Decided to keep item, or item damaged"
-              value={cancelReason}
-              onChange={(e) => setCancelReason(e.target.value)}
-              className="w-full p-3 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-            />
-            <div className="flex items-center justify-end gap-2 pt-2">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="text-lg font-extrabold text-slate-900 tracking-tight">
+                  Cancel Auction Listing
+                </h4>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Are you sure? Any active bidders will be notified.
+                </p>
+              </div>
+            </div>
+
+            {actionError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{actionError}</span>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                Cancellation Reason
+              </label>
+              <textarea
+                rows="3"
+                required
+                placeholder="e.g. Decided to keep item, or item was damaged"
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                className="w-full p-3 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setShowCancelModal(false)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors"
               >
                 Go Back
               </button>
               <button
                 type="button"
                 disabled={actionLoading || !cancelReason.trim()}
-                onClick={handleCancelAuction}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-50"
+                onClick={handleExecuteCancel}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 shadow-md shadow-rose-600/20 transition-all flex items-center gap-1.5 disabled:opacity-50"
               >
-                Confirm Cancellation
+                {actionLoading ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <span>Confirm Cancellation</span>
+                )}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL: Reject Bid */}
-      {showRejectModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
-            <h4 className="text-base font-bold text-slate-900">Reject Provisional Winning Bid</h4>
-            <p className="text-xs text-slate-500">
-              Provide a reason for rejecting the highest bid. The bidder will be notified.
-            </p>
-            <textarea
-              rows="3"
-              placeholder="e.g. Final amount was below reserve expectations"
-              value={rejectReason}
-              onChange={(e) => setRejectReason(e.target.value)}
-              className="w-full p-3 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-            />
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowRejectModal(false)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={actionLoading}
-                onClick={handleRejectBid}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700"
-              >
-                Reject Bid
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: Failed Pickup */}
+      {/* CUSTOM MODAL: 5. Failed Pickup */}
       {showFailedPickupModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
-            <h4 className="text-base font-bold text-slate-900">Record Failed Campus Pickup</h4>
-            <p className="text-xs text-slate-500">
-              State the reason why the campus handover could not be completed. Full audit history will be preserved.
-            </p>
-            <textarea
-              rows="3"
-              placeholder="e.g. Buyer did not show up or communicate for 48 hours"
-              value={failedPickupReason}
-              onChange={(e) => setFailedPickupReason(e.target.value)}
-              className="w-full p-3 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-            />
-            <div className="flex items-center justify-end gap-2 pt-2">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="text-lg font-extrabold text-slate-900 tracking-tight">
+                  Record Failed Pickup
+                </h4>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  State why the campus handover could not be completed.
+                </p>
+              </div>
+            </div>
+
+            {actionError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{actionError}</span>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                Outcome Reason
+              </label>
+              <textarea
+                rows="3"
+                placeholder="e.g. Buyer did not show up or respond to messages"
+                value={failedPickupReason}
+                onChange={(e) => setFailedPickupReason(e.target.value)}
+                className="w-full p-3 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setShowFailedPickupModal(false)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 disabled={actionLoading}
-                onClick={handleFailedPickup}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-slate-800 hover:bg-slate-900"
+                onClick={handleExecuteFailedPickup}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-slate-800 hover:bg-slate-900 shadow-md transition-all flex items-center gap-1.5 disabled:opacity-50"
               >
-                Save Outcome
+                {actionLoading ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <span>Save Outcome</span>
+                )}
               </button>
             </div>
           </div>

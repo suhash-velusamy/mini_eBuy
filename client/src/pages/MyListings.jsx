@@ -10,6 +10,8 @@ import {
   XCircle,
   AlertCircle,
   TrendingUp,
+  Handshake,
+  MapPin,
 } from 'lucide-react';
 import { userApi } from '../api/userApi';
 import { auctionApi } from '../api/auctionApi';
@@ -26,6 +28,15 @@ const MyListings = () => {
   const [stats, setStats] = useState(null);
   const [activeTab, setActiveTab] = useState('all');
   const [loading, setLoading] = useState(true);
+
+  // Custom Confirmation Modal State (No native browser alerts/confirms!)
+  const [modalState, setModalState] = useState({
+    isOpen: false,
+    type: 'approve', // 'approve' | 'handover'
+    item: null,
+    loading: false,
+    error: '',
+  });
 
   const fetchListings = async () => {
     try {
@@ -46,23 +57,43 @@ const MyListings = () => {
     fetchListings();
   }, [activeTab]);
 
-  const handleApprove = async (id) => {
-    if (!window.confirm('Approve this winning bid and reserve item for handover?')) return;
-    try {
-      await auctionApi.approveBid(id, 'Seller approved winning bid');
-      fetchListings();
-    } catch (err) {
-      alert(err.customMessage || err.message);
-    }
+  const openApproveModal = (item) => {
+    setModalState({
+      isOpen: true,
+      type: 'approve',
+      item,
+      loading: false,
+      error: '',
+    });
   };
 
-  const handleConfirmHandover = async (id) => {
-    if (!window.confirm('Confirm that the in-person campus handover has taken place?')) return;
+  const openHandoverModal = (item) => {
+    setModalState({
+      isOpen: true,
+      type: 'handover',
+      item,
+      loading: false,
+      error: '',
+    });
+  };
+
+  const handleModalConfirm = async () => {
+    if (!modalState.item) return;
     try {
-      await auctionApi.confirmHandover(id);
+      setModalState((prev) => ({ ...prev, loading: true, error: '' }));
+      if (modalState.type === 'approve') {
+        await auctionApi.approveBid(modalState.item._id, 'Seller approved bid');
+      } else {
+        await auctionApi.confirmHandover(modalState.item._id);
+      }
+      setModalState((prev) => ({ ...prev, isOpen: false, loading: false }));
       fetchListings();
     } catch (err) {
-      alert(err.customMessage || err.message);
+      setModalState((prev) => ({
+        ...prev,
+        loading: false,
+        error: err.customMessage || err.message || 'Operation failed. Please try again.',
+      }));
     }
   };
 
@@ -251,7 +282,7 @@ const MyListings = () => {
                     {/* Active with bids: Quick Accept Leading Bid */}
                     {item.status === 'Active' && item.currentLeadingBid && (
                       <button
-                        onClick={() => handleApprove(item._id)}
+                        onClick={() => openApproveModal(item)}
                         className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition-all flex items-center gap-1"
                         title="Accept leading bid early and reserve item"
                       >
@@ -263,7 +294,7 @@ const MyListings = () => {
                     {/* Pending Approval: Quick Approve Button */}
                     {item.status === 'Pending Approval' && (
                       <button
-                        onClick={() => handleApprove(item._id)}
+                        onClick={() => openApproveModal(item)}
                         className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition-all flex items-center gap-1"
                       >
                         <CheckCircle2 className="w-3.5 h-3.5" />
@@ -274,10 +305,11 @@ const MyListings = () => {
                     {/* Reserved: Quick Handover Button */}
                     {item.status === 'Reserved' && (
                       <button
-                        onClick={() => handleConfirmHandover(item._id)}
-                        className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition-all"
+                        onClick={() => openHandoverModal(item)}
+                        className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm transition-all flex items-center gap-1"
                       >
-                        Confirm Handover
+                        <Handshake className="w-3.5 h-3.5" />
+                        <span>Confirm Handover</span>
                       </button>
                     )}
 
@@ -293,6 +325,117 @@ const MyListings = () => {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* CUSTOM CONFIRMATION MODAL */}
+      {modalState.isOpen && modalState.item && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-start gap-3.5">
+              <div
+                className={`w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 ${
+                  modalState.type === 'approve'
+                    ? 'bg-emerald-100 text-emerald-600'
+                    : 'bg-blue-100 text-blue-600'
+                }`}
+              >
+                {modalState.type === 'approve' ? (
+                  <CheckCircle2 className="w-6 h-6" />
+                ) : (
+                  <Handshake className="w-6 h-6" />
+                )}
+              </div>
+              <div>
+                <h4 className="text-lg font-extrabold text-slate-900 tracking-tight">
+                  {modalState.type === 'approve'
+                    ? 'Accept & Reserve Winning Bid'
+                    : 'Confirm Campus Handover'}
+                </h4>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {modalState.type === 'approve'
+                    ? 'Reserve this item for the buyer and arrange campus handover.'
+                    : 'Mark item as permanently Sold once handover is completed.'}
+                </p>
+              </div>
+            </div>
+
+            {modalState.error && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{modalState.error}</span>
+              </div>
+            )}
+
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span>Item</span>
+                <span className="font-bold text-slate-900 truncate max-w-[180px]">
+                  {modalState.item.title}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span>Buyer</span>
+                <span className="font-semibold text-slate-900">
+                  {modalState.item.provisionalWinner?.name || 'Student Buyer'}
+                </span>
+              </div>
+              <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  {modalState.type === 'approve' ? 'Accepted Bid' : 'Final Sold Price'}
+                </span>
+                <span
+                  className={`font-mono font-extrabold text-xl ${
+                    modalState.type === 'approve' ? 'text-emerald-700' : 'text-blue-700'
+                  }`}
+                >
+                  {formatINR(
+                    modalState.item.winningAmount ||
+                      modalState.item.currentLeadingBid ||
+                      modalState.item.startingPrice
+                  )}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={modalState.loading}
+                onClick={() => setModalState((prev) => ({ ...prev, isOpen: false }))}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={modalState.loading}
+                onClick={handleModalConfirm}
+                className={`px-5 py-2.5 rounded-xl text-xs font-bold text-white shadow-md transition-all flex items-center gap-1.5 disabled:opacity-50 ${
+                  modalState.type === 'approve'
+                    ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20'
+                    : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20'
+                }`}
+              >
+                {modalState.loading ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    {modalState.type === 'approve' ? (
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                    ) : (
+                      <Handshake className="w-3.5 h-3.5" />
+                    )}
+                    <span>
+                      {modalState.type === 'approve'
+                        ? 'Confirm & Accept Bid'
+                        : 'Confirm Handover Done'}
+                    </span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
