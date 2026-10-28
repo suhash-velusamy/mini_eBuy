@@ -202,3 +202,4 @@ describe('3. Auction Lifecycle State Machine', () => {
     assert.equal(canTransition('Cancelled', 'Active'), false);
   });
 });
+

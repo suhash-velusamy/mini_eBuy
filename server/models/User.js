@@ -28,6 +28,11 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    role: {
+      type: String,
+      enum: ['bidder', 'seller', 'both', 'admin'],
+      default: 'bidder',
+    },
   },
   {
     timestamps: true,
@@ -51,6 +56,7 @@ userSchema.methods.toPublicJSON = function () {
     _id: this._id,
     name: this.name,
     email: this.email,
+    role: this.role || 'bidder',
     profilePhoto: this.profilePhoto,
     createdAt: this.createdAt,
   };

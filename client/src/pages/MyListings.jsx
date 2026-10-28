@@ -248,13 +248,26 @@ const MyListings = () => {
                   </div>
 
                   <div className="flex items-center gap-2">
+                    {/* Active with bids: Quick Accept Leading Bid */}
+                    {item.status === 'Active' && item.currentLeadingBid && (
+                      <button
+                        onClick={() => handleApprove(item._id)}
+                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition-all flex items-center gap-1"
+                        title="Accept leading bid early and reserve item"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Accept Bid</span>
+                      </button>
+                    )}
+
                     {/* Pending Approval: Quick Approve Button */}
                     {item.status === 'Pending Approval' && (
                       <button
                         onClick={() => handleApprove(item._id)}
-                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition-all"
+                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition-all flex items-center gap-1"
                       >
-                        Approve Bid
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Approve Bid</span>
                       </button>
                     )}
 

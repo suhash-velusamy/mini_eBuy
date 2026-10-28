@@ -11,17 +11,21 @@ import {
   Menu,
   X,
   ChevronDown,
+  RefreshCw,
+  Shield,
+  Tag,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import NotificationBell from './NotificationBell';
 
 const Navbar = () => {
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, switchRole, isAuthenticated, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [switchingRole, setSwitchingRole] = useState(false);
   const dropdownRef = useRef(null);
 
   // Close dropdown on click outside
@@ -44,6 +48,24 @@ const Navbar = () => {
     await logout();
     setUserDropdownOpen(false);
     navigate('/login');
+  };
+
+  const handleSwitchRole = async () => {
+    try {
+      setSwitchingRole(true);
+      const nextRole = user?.role === 'seller' ? 'bidder' : 'seller';
+      await switchRole(nextRole);
+      setUserDropdownOpen(false);
+      if (nextRole === 'seller') {
+        navigate('/seller-dashboard');
+      } else {
+        navigate('/');
+      }
+    } catch (err) {
+      console.error('Role switch failed:', err);
+    } finally {
+      setSwitchingRole(false);
+    }
   };
 
   return (
@@ -121,8 +143,19 @@ const Navbar = () => {
                     onClick={() => setUserDropdownOpen(!userDropdownOpen)}
                     className="flex items-center gap-2 p-1.5 pl-3 rounded-full border border-slate-200 hover:border-slate-300 bg-slate-50 hover:bg-slate-100 transition-all"
                   >
-                    <span className="text-xs font-bold text-slate-800 max-w-[120px] truncate">
+                    <span className="text-xs font-bold text-slate-800 max-w-[100px] truncate">
                       {user?.name?.split(' ')[0]}
+                    </span>
+                    <span
+                      className={`px-1.5 py-0.5 rounded-md text-[9px] font-extrabold uppercase tracking-wider ${
+                        user?.role === 'seller'
+                          ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                          : user?.role === 'admin'
+                          ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                          : 'bg-blue-100 text-blue-800 border border-blue-200'
+                      }`}
+                    >
+                      {user?.role || 'Bidder'}
                     </span>
                     <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-bold text-xs flex items-center justify-center">
                       {user?.name?.charAt(0).toUpperCase() || 'U'}
@@ -131,15 +164,46 @@ const Navbar = () => {
                   </button>
 
                   {userDropdownOpen && (
-                    <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white shadow-xl border border-slate-200 py-2 z-50 animate-fadeIn">
+                    <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-white shadow-xl border border-slate-200 py-2 z-50 animate-fadeIn">
                       <div className="px-4 py-2.5 border-b border-slate-100">
-                        <p className="text-xs font-bold text-slate-900 truncate">
-                          {user?.name}
-                        </p>
+                        <div className="flex items-center justify-between gap-1 mb-1">
+                          <p className="text-xs font-bold text-slate-900 truncate">
+                            {user?.name}
+                          </p>
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
+                              user?.role === 'seller'
+                                ? 'bg-amber-100 text-amber-800'
+                                : user?.role === 'admin'
+                                ? 'bg-purple-100 text-purple-800'
+                                : 'bg-blue-100 text-blue-800'
+                            }`}
+                          >
+                            {user?.role || 'Bidder'}
+                          </span>
+                        </div>
                         <p className="text-[11px] text-slate-500 truncate">
                           {user?.email}
                         </p>
                       </div>
+
+                      {/* Fast Role Switcher */}
+                      {user?.role !== 'admin' && (
+                        <div className="p-2 border-b border-slate-100 bg-slate-50/70">
+                          <button
+                            type="button"
+                            disabled={switchingRole}
+                            onClick={handleSwitchRole}
+                            className="w-full py-1.5 px-3 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-800 flex items-center justify-between transition-all shadow-2xs hover:border-slate-300"
+                          >
+                            <span className="flex items-center gap-1.5">
+                              <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${switchingRole ? 'animate-spin' : ''}`} />
+                              <span>Switch to {user?.role === 'seller' ? 'Bidder Mode' : 'Seller Mode'}</span>
+                            </span>
+                            <span className="text-[10px] text-blue-600 font-semibold">1-Click</span>
+                          </button>
+                        </div>
+                      )}
 
                       <div className="py-1 text-sm font-medium text-slate-700">
                         <Link
@@ -219,10 +283,38 @@ const Navbar = () => {
         <div className="md:hidden border-t border-slate-200 bg-white px-4 pt-3 pb-6 space-y-3">
           {isAuthenticated ? (
             <>
-              <div className="pb-3 border-b border-slate-100">
-                <div className="font-bold text-slate-900">{user?.name}</div>
-                <div className="text-xs text-slate-500">{user?.email}</div>
+              <div className="pb-3 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                  <div className="font-bold text-slate-900">{user?.name}</div>
+                  <div className="text-xs text-slate-500">{user?.email}</div>
+                </div>
+                <span
+                  className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider ${
+                    user?.role === 'seller'
+                      ? 'bg-amber-100 text-amber-800'
+                      : user?.role === 'admin'
+                      ? 'bg-purple-100 text-purple-800'
+                      : 'bg-blue-100 text-blue-800'
+                  }`}
+                >
+                  {user?.role || 'Bidder'}
+                </span>
               </div>
+
+              {user?.role !== 'admin' && (
+                <button
+                  type="button"
+                  disabled={switchingRole}
+                  onClick={handleSwitchRole}
+                  className="w-full py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-800 flex items-center justify-between transition-all"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${switchingRole ? 'animate-spin' : ''}`} />
+                    <span>Switch to {user?.role === 'seller' ? 'Bidder Mode' : 'Seller Mode'}</span>
+                  </span>
+                  <span className="text-[10px] text-blue-600 font-semibold">1-Click</span>
+                </button>
+              )}
 
               <div className="space-y-1">
                 <Link

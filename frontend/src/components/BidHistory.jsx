@@ -1,5 +1,5 @@
 import React from 'react';
-import { Gavel, Award, Clock } from 'lucide-react';
+import { Gavel, Award, Clock, CheckCircle2, XCircle } from 'lucide-react';
 
 const formatINR = (paise) => {
   if (!paise) return '₹0';
@@ -18,7 +18,14 @@ const formatDate = (dateString) => {
   });
 };
 
-const BidHistory = ({ bids = [], currentWinningBidderId }) => {
+const BidHistory = ({
+  bids = [],
+  currentWinningBidderId,
+  canManageBids = false,
+  onAcceptBid,
+  onRejectBid,
+  actionLoading = false,
+}) => {
   if (!bids || bids.length === 0) {
     return (
       <div className="py-10 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
@@ -80,14 +87,41 @@ const BidHistory = ({ bids = [], currentWinningBidderId }) => {
                 </div>
               </div>
 
-              <div className="text-right">
-                <span
-                  className={`font-mono font-bold text-base ${
-                    isLeading ? 'text-blue-700' : 'text-slate-800'
-                  }`}
-                >
-                  {formatINR(bid.amount)}
-                </span>
+              <div className="flex items-center gap-3">
+                <div className="text-right">
+                  <span
+                    className={`font-mono font-bold text-base ${
+                      isLeading ? 'text-blue-700' : 'text-slate-800'
+                    }`}
+                  >
+                    {formatINR(bid.amount)}
+                  </span>
+                </div>
+
+                {canManageBids && isLeading && (
+                  <div className="flex items-center gap-1.5 ml-2">
+                    <button
+                      type="button"
+                      disabled={actionLoading}
+                      onClick={() => onAcceptBid && onAcceptBid(bid)}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs hover:shadow-sm transition-all flex items-center gap-1"
+                      title="Accept this bid & reserve item"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Accept</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={actionLoading}
+                      onClick={() => onRejectBid && onRejectBid(bid)}
+                      className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition-all flex items-center gap-1"
+                      title="Reject this bid"
+                    >
+                      <XCircle className="w-3.5 h-3.5" />
+                      <span>Reject</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           );

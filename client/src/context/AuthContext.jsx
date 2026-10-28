@@ -62,14 +62,28 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const switchRole = async (newRole) => {
+    const res = await authApi.switchRole(newRole);
+    if (res.success && res.user) {
+      setUser(res.user);
+      return res.user;
+    }
+    throw new Error(res.message || 'Failed to switch role');
+  };
+
   return (
     <AuthContext.Provider
       value={{
         user,
+        role: user?.role || 'bidder',
+        isSeller: user?.role === 'seller' || user?.role === 'both' || user?.role === 'admin',
+        isBidder: user?.role === 'bidder' || user?.role === 'both' || user?.role === 'admin',
+        isAdmin: user?.role === 'admin',
         isAuthenticated: !!user,
         loading,
         login,
         register,
+        switchRole,
         logout,
       }}
     >

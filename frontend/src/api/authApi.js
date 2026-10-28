@@ -21,6 +21,11 @@ export const authApi = {
     return res.data;
   },
 
+  switchRole: async (role) => {
+    const res = await api.patch('/api/auth/switch-role', { role });
+    return res.data;
+  },
+
   getDemoAccounts: async () => {
     const res = await api.get('/api/auth/demo-accounts');
     return res.data;

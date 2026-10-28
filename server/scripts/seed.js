@@ -71,31 +71,43 @@ const seedDatabase = async () => {
       name: 'John Seller (Senior CSE)',
       email: 'seller@campus.edu',
       passwordHash,
+      role: 'seller',
     });
 
     const bidder1 = await User.create({
       name: 'Alice Bidder (Sophomore ECE)',
       email: 'bidder1@campus.edu',
       passwordHash,
+      role: 'bidder',
     });
 
     const bidder2 = await User.create({
       name: 'Bob Bidder (Junior Mech)',
       email: 'bidder2@campus.edu',
       passwordHash,
+      role: 'bidder',
     });
 
     const bidder3 = await User.create({
       name: 'Charlie Bidder (Freshman IT)',
       email: 'bidder3@campus.edu',
       passwordHash,
+      role: 'bidder',
+    });
+
+    const admin = await User.create({
+      name: 'Campus Admin (Coordinator)',
+      email: 'admin@campus.edu',
+      passwordHash,
+      role: 'admin',
     });
 
     console.log(`[Seed] Users created:
-      - Seller:   seller@campus.edu  / ${defaultPassword}
-      - Bidder 1: bidder1@campus.edu / ${defaultPassword}
-      - Bidder 2: bidder2@campus.edu / ${defaultPassword}
-      - Bidder 3: bidder3@campus.edu / ${defaultPassword}`);
+      - Seller:   seller@campus.edu  / ${defaultPassword} (Role: seller)
+      - Bidder 1: bidder1@campus.edu / ${defaultPassword} (Role: bidder)
+      - Bidder 2: bidder2@campus.edu / ${defaultPassword} (Role: bidder)
+      - Bidder 3: bidder3@campus.edu / ${defaultPassword} (Role: bidder)
+      - Admin:    admin@campus.edu   / ${defaultPassword} (Role: admin)`);
 
     // Timestamps
     const now = Date.now();

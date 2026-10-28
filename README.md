@@ -239,18 +239,28 @@ Open your browser to:
 
 ---
 
-## 6. Demo Accounts & Credentials
+## 6. Role-Based Authentication & Demo Accounts
 
-The seed script creates the following pre-configured student accounts in MongoDB:
+Campus Auction provides full **Role-Based Authentication** across registration, login, and in-app navigation:
+
+### Supported Campus Roles:
+- 🎓 **Bidder / Buyer (Junior / Student):** Explores active listings, places live bids with server-authoritative countdowns, tracks outbid alerts in real time.
+- 💼 **Senior Seller (Graduating Senior):** Creates timed auction listings, sets reserve price & minimum increments, reviews winning bids, and completes campus handovers.
+- 🛡️ **Campus Admin (Coordinator):** Administrative oversight across campus listings, accounts, and disputes.
+
+### Pre-Configured Accounts in MongoDB:
 
 | Student Name | Email | Password | Role / Purpose |
 | :--- | :--- | :--- | :--- |
-| **John Seller** (Senior CSE) | `seller@campus.edu` | `Password123!` | Seller who creates listings, approves winning bids, and confirms handovers |
-| **Alice Bidder** (Sophomore ECE) | `bidder1@campus.edu` | `Password123!` | Student bidder who places initial leading bids |
-| **Bob Bidder** (Junior Mech) | `bidder2@campus.edu` | `Password123!` | Competitive bidder who outbids Alice in real-time |
+| **John Seller** (Senior CSE) | `seller@campus.edu` | `Password123!` | Senior Seller: creates listings, approves winning bids, confirms handovers |
+| **Alice Bidder** (Sophomore ECE) | `bidder1@campus.edu` | `Password123!` | Student Bidder: places initial leading bids |
+| **Bob Bidder** (Junior Mech) | `bidder2@campus.edu` | `Password123!` | Competitive Bidder: outbids Alice in real-time |
 | **Charlie Bidder** (Freshman IT) | `bidder3@campus.edu` | `Password123!` | General student buyer |
+| **Campus Admin** (Coordinator) | `admin@campus.edu` | `Password123!` | Campus Administrator |
 
-> 💡 **Dynamic Fast Login:** On the `/login` page, registered accounts are fetched dynamically from the database and displayed as 1-click login buttons!
+> 💡 **Dynamic Role-Based Login:** On the `/login` page, you can toggle between **Bidder**, **Seller**, and **Admin** login perspectives or click any of the 1-click database demo account pills (each color-coded with its role badge).
+> 
+> 🔄 **1-Click Role Switcher:** When logged in, click your user pill in the top navbar to instantly toggle between **Seller Mode** and **Bidder Mode** on the fly!
 
 ---
 

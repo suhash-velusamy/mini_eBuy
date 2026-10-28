@@ -142,9 +142,10 @@ const AuctionDetails = () => {
     };
   }, [socket, id]);
 
-  const isSeller = user && auction && auction.seller?._id === user._id;
+  const sellerId = typeof auction?.seller === 'object' ? auction?.seller?._id : auction?.seller;
+  const isSeller = Boolean(user && sellerId && String(sellerId) === String(user._id));
   const isLeadingBidder =
-    user && auction && auction.currentLeadingBidder === user._id;
+    user && auction && (auction.currentLeadingBidder === user._id || auction.provisionalWinner?._id === user._id);
 
   const minNextBidINR = auction
     ? auction.currentLeadingBid
@@ -192,15 +193,24 @@ const AuctionDetails = () => {
   };
 
   // Seller Action Handlers
-  const handleApproveBid = async () => {
-    if (!window.confirm('Are you sure you want to approve this winning bid and reserve the item for campus handover?')) {
+  const handleApproveBid = async (bidToApprove) => {
+    const amountToApprove = formatINR(
+      bidToApprove?.amount || auction?.currentLeadingBid || auction?.winningAmount
+    );
+    if (
+      !window.confirm(
+        `Are you sure you want to accept this bid of ${amountToApprove} and reserve the item for campus handover?`
+      )
+    ) {
       return;
     }
     try {
       setActionLoading(true);
-      const res = await auctionApi.approveBid(id, 'Seller accepted winning bid');
+      const res = await auctionApi.approveBid(id, 'Seller accepted bid');
       if (res.success) {
         setAuction(res.auction);
+        const bidsRes = await auctionApi.getAuctionBids(id);
+        if (bidsRes.success) setBids(bidsRes.bids);
       }
     } catch (err) {
       alert(err.customMessage || err.message);
@@ -216,6 +226,9 @@ const AuctionDetails = () => {
       if (res.success) {
         setAuction(res.auction);
         setShowRejectModal(false);
+        setRejectReason('');
+        const bidsRes = await auctionApi.getAuctionBids(id);
+        if (bidsRes.success) setBids(bidsRes.bids);
       }
     } catch (err) {
       alert(err.customMessage || err.message);
@@ -446,7 +459,14 @@ const AuctionDetails = () => {
             </div>
 
             {/* Public Bid History Section */}
-            <BidHistory bids={bids} currentWinningBidderId={auction.currentLeadingBidder} />
+            <BidHistory
+              bids={bids}
+              currentWinningBidderId={auction.currentLeadingBidder}
+              canManageBids={isSeller && (auction.status === 'Active' || auction.status === 'Pending Approval')}
+              onAcceptBid={handleApproveBid}
+              onRejectBid={() => setShowRejectModal(true)}
+              actionLoading={actionLoading}
+            />
           </div>
 
           {/* RIGHT COLUMN: Bidding Box, Live Timer & Seller Actions */}
@@ -675,58 +695,158 @@ const AuctionDetails = () => {
             {/* SELLER CONTROL PANEL (Only visible to the seller of this listing) */}
             {isSeller && (
               <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm space-y-4">
-                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-blue-600" />
-                  <span>Seller Control Panel</span>
-                </h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-blue-600" />
+                    <span>Seller Control Panel</span>
+                  </h3>
+                  <StatusBadge status={auction.status} size="sm" />
+                </div>
 
-                {/* Cancel listing button (Active only) */}
+                {/* 1. ACTIVE AUCTION WITH BIDS OR ZERO BIDS */}
                 {auction.status === 'Active' && (
-                  <button
-                    onClick={() => setShowCancelModal(true)}
-                    className="w-full py-2.5 px-4 rounded-xl border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold transition-all text-center"
-                  >
-                    Cancel Listing
-                  </button>
-                )}
+                  <div className="space-y-3">
+                    {auction.currentLeadingBid ? (
+                      <div className="p-3.5 rounded-2xl bg-blue-50/80 border border-blue-200/80 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-blue-900 uppercase tracking-wider">
+                            Current Highest Bid
+                          </span>
+                          <span className="font-mono font-bold text-base text-blue-900">
+                            {formatINR(auction.currentLeadingBid)}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-600 leading-snug">
+                          You can accept and reserve this bid now to close the auction early, or reject it to fall back to the previous bid.
+                        </p>
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => handleApproveBid()}
+                            disabled={actionLoading}
+                            className="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Accept Bid</span>
+                          </button>
 
-                {/* Approve or Reject Provisional Win (Pending Approval only) */}
-                {auction.status === 'Pending Approval' && (
-                  <div className="space-y-2">
+                          <button
+                            type="button"
+                            onClick={() => setShowRejectModal(true)}
+                            disabled={actionLoading}
+                            className="w-full py-2.5 px-3 rounded-xl border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+                          >
+                            <XCircle className="w-3.5 h-3.5" />
+                            <span>Reject Bid</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-500">
+                        No bids placed yet. You can cancel this listing if needed.
+                      </div>
+                    )}
+
                     <button
-                      onClick={handleApproveBid}
-                      disabled={actionLoading}
-                      className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-sm"
+                      type="button"
+                      onClick={() => setShowCancelModal(true)}
+                      className="w-full py-2 px-3 rounded-xl border border-slate-200 hover:border-rose-200 text-slate-500 hover:text-rose-600 hover:bg-rose-50 text-xs font-semibold transition-all text-center"
                     >
-                      ✓ Approve Winning Bid (Reserve Item)
-                    </button>
-                    <button
-                      onClick={() => setShowRejectModal(true)}
-                      disabled={actionLoading}
-                      className="w-full py-2.5 px-4 rounded-xl border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold transition-all"
-                    >
-                      ✕ Reject Winning Bid
+                      Cancel Listing
                     </button>
                   </div>
                 )}
 
-                {/* Confirm Handover or Record Failed Pickup (Reserved only) */}
+                {/* 2. PENDING APPROVAL (Auction countdown ended with bids) */}
+                {auction.status === 'Pending Approval' && (
+                  <div className="space-y-2">
+                    <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-xs space-y-1">
+                      <p className="font-bold text-amber-900">
+                        Auction Countdown Completed — Final Review
+                      </p>
+                      <p className="text-amber-800">
+                        Provisional Winner:{' '}
+                        <span className="font-semibold">{auction.provisionalWinner?.name || 'Student'}</span> • Final
+                        Price:{' '}
+                        <span className="font-mono font-bold">
+                          {formatINR(auction.winningAmount || auction.currentLeadingBid)}
+                        </span>
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleApproveBid()}
+                      disabled={actionLoading}
+                      className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>✓ Accept Winning Bid (Reserve Item)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowRejectModal(true)}
+                      disabled={actionLoading}
+                      className="w-full py-2.5 px-4 rounded-xl border border-rose-300 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+                    >
+                      <XCircle className="w-4 h-4" />
+                      <span>✕ Reject Winning Bid</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* 3. RESERVED (Handover Arranged -> Confirm Handover Done) */}
                 {auction.status === 'Reserved' && (
                   <div className="space-y-2">
+                    <div className="p-3.5 rounded-2xl bg-purple-50 border border-purple-200 text-xs space-y-1">
+                      <p className="font-bold text-purple-900">Item Reserved for Campus Handover</p>
+                      <p className="text-purple-800">
+                        Buyer:{' '}
+                        <span className="font-semibold">{auction.provisionalWinner?.name || 'Student'}</span> • Agreed
+                        Amount:{' '}
+                        <span className="font-mono font-bold">
+                          {formatINR(auction.winningAmount || auction.currentLeadingBid)}
+                        </span>
+                      </p>
+                    </div>
+
                     <button
+                      type="button"
                       onClick={handleConfirmHandover}
                       disabled={actionLoading}
-                      className="w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-sm"
+                      className="w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-md shadow-blue-500/20 flex items-center justify-center gap-1.5 disabled:opacity-50"
                     >
-                      🤝 Confirm Campus Handover Completed (Mark Sold)
+                      <span>🤝 Confirm Handover Completed (Mark as Sold)</span>
                     </button>
                     <button
+                      type="button"
                       onClick={() => setShowFailedPickupModal(true)}
                       disabled={actionLoading}
-                      className="w-full py-2.5 px-4 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all"
+                      className="w-full py-2 px-4 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold transition-all disabled:opacity-50"
                     >
-                      ⚠️ Record Failed Pickup
+                      <span>⚠️ Record Failed Pickup</span>
                     </button>
+                  </div>
+                )}
+
+                {/* 4. SOLD */}
+                {auction.status === 'Sold' && (
+                  <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs space-y-1 text-emerald-900">
+                    <div className="font-bold text-sm flex items-center gap-1.5 text-emerald-700">
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Sale Completed & Confirmed!</span>
+                    </div>
+                    <p>
+                      Sold Amount:{' '}
+                      <span className="font-mono font-bold">
+                        {formatINR(auction.winningAmount || auction.currentLeadingBid)}
+                      </span>
+                    </p>
+                    {auction.soldAt && (
+                      <p className="text-[11px] text-emerald-700">
+                        Completed on {new Date(auction.soldAt).toLocaleString()}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>

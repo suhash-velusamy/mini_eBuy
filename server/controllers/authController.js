@@ -39,7 +39,7 @@ const sendTokenResponse = (user, statusCode, res) => {
  */
 const register = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, role } = req.body;
 
     // Validate inputs
     if (!name || !email || !password) {
@@ -83,11 +83,16 @@ const register = async (req, res) => {
     // Hash password
     const passwordHash = await User.hashPassword(password);
 
+    // Validate role
+    const validRoles = ['bidder', 'seller', 'both', 'admin'];
+    const assignedRole = role && validRoles.includes(role.toLowerCase()) ? role.toLowerCase() : 'bidder';
+
     // Create user
     const user = await User.create({
       name: name.trim(),
       email: trimmedEmail,
       passwordHash,
+      role: assignedRole,
     });
 
     sendTokenResponse(user, 201, res);
@@ -102,12 +107,12 @@ const register = async (req, res) => {
 
 /**
  * @route   POST /api/auth/login
- * @desc    Authenticate user & get token
+ * @desc    Authenticate user & get token (supports role-based login)
  * @access  Public
  */
 const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, role } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({
@@ -133,6 +138,20 @@ const login = async (req, res) => {
         success: false,
         message: 'Invalid credentials. Please check your email and password.',
       });
+    }
+
+    // If explicit role is selected on login, update or align user's active role
+    if (role) {
+      const validRoles = ['bidder', 'seller', 'both', 'admin'];
+      const normalizedRole = role.toLowerCase();
+      if (validRoles.includes(normalizedRole)) {
+        // If user is admin, allow logging into any role perspective
+        if (user.role !== 'admin' && user.role !== normalizedRole && user.role !== 'both') {
+          // Update role to requested role so the student can operate in that mode
+          user.role = normalizedRole;
+          await user.save();
+        }
+      }
     }
 
     sendTokenResponse(user, 200, res);
@@ -177,6 +196,48 @@ const getMe = async (req, res) => {
 };
 
 /**
+ * @route   PATCH /api/auth/switch-role
+ * @desc    Switch user role between bidder, seller, etc.
+ * @access  Private
+ */
+const switchRole = async (req, res) => {
+  try {
+    const { role } = req.body;
+    const validRoles = ['bidder', 'seller', 'both', 'admin'];
+
+    if (!role || !validRoles.includes(role.toLowerCase())) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid role provided. Valid roles: bidder, seller, both.',
+      });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found.',
+      });
+    }
+
+    user.role = role.toLowerCase();
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Role switched to ${user.role} successfully.`,
+      user: user.toPublicJSON(),
+    });
+  } catch (error) {
+    console.error('Error switching role:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to switch role.',
+    });
+  }
+};
+
+/**
  * @route   GET /api/auth/demo-accounts
  * @desc    Get registered student demo accounts dynamically from database
  * @access  Public
@@ -184,8 +245,8 @@ const getMe = async (req, res) => {
 const getDemoAccounts = async (req, res) => {
   try {
     const users = await User.find({})
-      .select('name email createdAt')
-      .limit(6);
+      .select('name email role createdAt')
+      .limit(8);
 
     res.status(200).json({
       success: true,
@@ -193,6 +254,7 @@ const getDemoAccounts = async (req, res) => {
         _id: u._id,
         name: u.name,
         email: u.email,
+        role: u.role || 'bidder',
       })),
     });
   } catch (error) {
@@ -206,5 +268,6 @@ module.exports = {
   login,
   logout,
   getMe,
+  switchRole,
   getDemoAccounts,
 };

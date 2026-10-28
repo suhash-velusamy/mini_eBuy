@@ -117,14 +117,15 @@ initSocket(server);
 initAuctionScheduler();
 
 const PORT = process.env.PORT || 5000;
+const HOST = process.env.HOST || '0.0.0.0';
 
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
-    console.error(`\n[Server Error] Port ${PORT} is already in use by another process.`);
+    console.error(`\n[Server Error] Port ${PORT} (${HOST}) is already in use by another process.`);
     console.error(`To resolve this issue:`);
-    console.error(`  1. Kill the process using port ${PORT}:`);
-    console.error(`     Run in PowerShell: npx kill-port ${PORT}`);
-    console.error(`     or: Get-Process node | Stop-Process -Force`);
+    console.error(`  1. Kill any existing process on port ${PORT}:`);
+    console.error(`     Run: npm run free-port`);
+    console.error(`     or in PowerShell: Get-Process node | Stop-Process -Force`);
     console.error(`  2. Or change PORT in backend/.env (e.g. PORT=5001).\n`);
     process.exit(1);
   } else {
@@ -132,12 +133,13 @@ server.on('error', (err) => {
   }
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, HOST, () => {
   console.log(`=========================================`);
   console.log(` Campus Auction Backend Server Running   `);
   console.log(` Port: ${PORT}                           `);
+  console.log(` Host: ${HOST}                           `);
   console.log(` Local URL: http://localhost:${PORT}      `);
-  console.log(` Client URL: ${process.env.CLIENT_URL || 'http://localhost:5173'} `);
+  console.log(` Client URL: ${process.env.CLIENT_URL || 'http://localhost:5174'} `);
   console.log(`=========================================`);
 });
 

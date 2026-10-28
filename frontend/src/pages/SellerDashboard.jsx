@@ -30,10 +30,13 @@ const SellerDashboard = () => {
       const res = await userApi.getMyListings('all');
       if (res.success) {
         setStats(res.stats);
-        // Actionable: Pending Approval and Reserved items
+        // Actionable: Active with bids, Pending Approval, and Reserved items
         setActionableListings(
           res.listings.filter(
-            (i) => i.status === 'Pending Approval' || i.status === 'Reserved'
+            (i) =>
+              i.status === 'Pending Approval' ||
+              i.status === 'Reserved' ||
+              (i.status === 'Active' && i.currentLeadingBid)
           )
         );
       }
@@ -205,6 +208,15 @@ const SellerDashboard = () => {
                 </div>
 
                 <div className="flex items-center gap-2">
+                  {item.status === 'Active' && item.currentLeadingBid && (
+                    <button
+                      onClick={() => handleApprove(item._id)}
+                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-sm"
+                    >
+                      Accept Bid
+                    </button>
+                  )}
+
                   {item.status === 'Pending Approval' && (
                     <button
                       onClick={() => handleApprove(item._id)}

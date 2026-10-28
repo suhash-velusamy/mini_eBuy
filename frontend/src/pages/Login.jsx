@@ -1,6 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { GraduationCap, Mail, Lock, AlertCircle, ArrowRight, UserCheck } from 'lucide-react';
+import {
+  GraduationCap,
+  Mail,
+  Lock,
+  AlertCircle,
+  ArrowRight,
+  UserCheck,
+  Gavel,
+  Tag,
+  Shield,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { authApi } from '../api/authApi';
 
@@ -9,6 +19,7 @@ const Login = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const [activeRole, setActiveRole] = useState('bidder'); // 'bidder' | 'seller' | 'admin'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -18,7 +29,7 @@ const Login = () => {
   const [dbAccounts, setDbAccounts] = useState([]);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
 
-  const redirectPath = location.state?.from?.pathname || '/';
+  const redirectPath = location.state?.from?.pathname || '';
 
   useEffect(() => {
     const fetchRegisteredAccounts = async () => {
@@ -43,8 +54,16 @@ const Login = () => {
     setLoading(true);
 
     try {
-      await login({ email, password });
-      navigate(redirectPath, { replace: true });
+      const loggedUser = await login({ email, password, role: activeRole });
+      
+      // Role-based smart redirection
+      if (redirectPath && redirectPath !== '/') {
+        navigate(redirectPath, { replace: true });
+      } else if (loggedUser?.role === 'seller' || activeRole === 'seller') {
+        navigate('/seller-dashboard', { replace: true });
+      } else {
+        navigate('/', { replace: true });
+      }
     } catch (err) {
       setError(err.customMessage || err.message || 'Login failed. Please check your credentials.');
     } finally {
@@ -55,7 +74,40 @@ const Login = () => {
   const handleSelectAccount = (account) => {
     setEmail(account.email);
     setPassword('Password123!'); // Default development password for seeded accounts
+    if (account.role) {
+      setActiveRole(account.role);
+    } else if (account.email.includes('seller')) {
+      setActiveRole('seller');
+    } else if (account.email.includes('admin')) {
+      setActiveRole('admin');
+    } else {
+      setActiveRole('bidder');
+    }
     setError('');
+  };
+
+  const getRoleBadge = (role) => {
+    switch (role) {
+      case 'seller':
+        return (
+          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200">
+            Seller
+          </span>
+        );
+      case 'admin':
+        return (
+          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-purple-100 text-purple-800 border border-purple-200">
+            Admin
+          </span>
+        );
+      case 'bidder':
+      default:
+        return (
+          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-blue-100 text-blue-800 border border-blue-200">
+            Bidder
+          </span>
+        );
+    }
   };
 
   return (
@@ -70,17 +122,17 @@ const Login = () => {
             Log in to Campus Auction
           </h2>
           <p className="text-xs text-slate-500 mt-1">
-            Access your campus auctions, bids, and seller notifications
+            Sign in with your campus role to manage listings and live bids
           </p>
         </div>
 
-        {/* Dynamically loaded Database Accounts (if present in local DB) */}
+        {/* Dynamically loaded Database Accounts with Role Badges */}
         {dbAccounts.length > 0 && (
           <div className="mb-6 p-3.5 rounded-2xl bg-blue-50/80 border border-blue-200/70">
             <div className="flex items-center justify-between mb-2">
               <span className="text-[11px] font-bold text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
                 <UserCheck className="w-3.5 h-3.5 text-blue-600" />
-                <span>Registered Campus Accounts</span>
+                <span>1-Click Role Logins (From Database)</span>
               </span>
               <span className="text-[10px] text-blue-600 font-medium">Live from MongoDB</span>
             </div>
@@ -90,9 +142,16 @@ const Login = () => {
                   key={acc._id}
                   type="button"
                   onClick={() => handleSelectAccount(acc)}
-                  className="text-left p-2 rounded-xl bg-white hover:bg-blue-100/50 border border-blue-200/60 text-xs font-semibold text-slate-800 transition-all hover:border-blue-400"
+                  className={`text-left p-2 rounded-xl bg-white hover:bg-blue-100/50 border text-xs font-semibold text-slate-800 transition-all hover:border-blue-400 ${
+                    email === acc.email
+                      ? 'ring-2 ring-blue-500 border-blue-500 bg-blue-50/50'
+                      : 'border-blue-200/60'
+                  }`}
                 >
-                  <div className="truncate text-blue-700 font-bold">{acc.name}</div>
+                  <div className="flex items-center justify-between gap-1 mb-0.5">
+                    <span className="truncate text-blue-700 font-bold">{acc.name.split(' ')[0]}</span>
+                    {getRoleBadge(acc.role)}
+                  </div>
                   <div className="text-[10px] text-slate-500 truncate">{acc.email}</div>
                 </button>
               ))}
@@ -108,6 +167,53 @@ const Login = () => {
               <span>{error}</span>
             </div>
           )}
+
+          {/* Role Selection Tabs */}
+          <div className="mb-5">
+            <label className="block text-xs font-bold text-slate-700 mb-2 uppercase tracking-wider">
+              Login Role Perspective
+            </label>
+            <div className="grid grid-cols-3 p-1 bg-slate-100 rounded-2xl gap-1">
+              <button
+                type="button"
+                onClick={() => setActiveRole('bidder')}
+                className={`py-2 px-1 text-center rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  activeRole === 'bidder'
+                    ? 'bg-white text-blue-700 shadow-sm ring-1 ring-slate-200'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Gavel className="w-3.5 h-3.5" />
+                <span>Bidder</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveRole('seller')}
+                className={`py-2 px-1 text-center rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  activeRole === 'seller'
+                    ? 'bg-white text-amber-700 shadow-sm ring-1 ring-slate-200'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Tag className="w-3.5 h-3.5" />
+                <span>Seller</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveRole('admin')}
+                className={`py-2 px-1 text-center rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                  activeRole === 'admin'
+                    ? 'bg-white text-purple-700 shadow-sm ring-1 ring-slate-200'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Shield className="w-3.5 h-3.5" />
+                <span>Admin</span>
+              </button>
+            </div>
+          </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -147,13 +253,21 @@ const Login = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full mt-2 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-md shadow-blue-500/20 hover:shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+              className={`w-full py-3 rounded-xl text-white font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 disabled:opacity-60 ${
+                activeRole === 'seller'
+                  ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-500/20'
+                  : activeRole === 'admin'
+                  ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-500/20'
+                  : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20'
+              }`}
             >
               {loading ? (
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
               ) : (
                 <>
-                  <span>Sign In</span>
+                  <span>
+                    Log In as {activeRole === 'seller' ? 'Senior Seller' : activeRole === 'admin' ? 'Campus Admin' : 'Student Bidder'}
+                  </span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
@@ -162,9 +276,9 @@ const Login = () => {
 
           <div className="mt-6 pt-5 border-t border-slate-100 text-center">
             <p className="text-xs text-slate-500">
-              New to Campus Auction?{' '}
+              Don't have a campus account?{' '}
               <Link to="/register" className="font-bold text-blue-600 hover:text-blue-700">
-                Create an account
+                Register with your role
               </Link>
             </p>
           </div>

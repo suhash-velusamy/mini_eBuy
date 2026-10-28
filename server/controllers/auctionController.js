@@ -205,6 +205,8 @@ const getAuctions = async (req, res) => {
       page: pageNum,
       totalPages: Math.ceil(total / pageSize) || 1,
       items,
+      auctions: items,
+      listings: items,
     });
   } catch (error) {
     console.error('Error fetching auctions:', error);
@@ -732,7 +734,9 @@ const placeBid = async (req, res) => {
  */
 const approveBid = async (req, res) => {
   try {
-    const item = await Item.findById(req.params.id).populate('provisionalWinner', 'name email');
+    const item = await Item.findById(req.params.id)
+      .populate('provisionalWinner', 'name email')
+      .populate('currentLeadingBidder', 'name email');
 
     if (!item) {
       return res.status(404).json({ success: false, message: 'Auction not found.' });
@@ -742,13 +746,27 @@ const approveBid = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Only the seller can approve this bid.' });
     }
 
-    if (item.status !== 'Pending Approval') {
+    if (item.status !== 'Pending Approval' && item.status !== 'Active') {
       return res.status(400).json({
         success: false,
-        message: `Auction must be "Pending Approval" to approve. Current status: ${item.status}`,
+        message: `Auction must be "Active" with bids or "Pending Approval" to accept. Current status: ${item.status}`,
       });
     }
 
+    // Determine winner and final winning amount
+    const winnerId =
+      item.provisionalWinner?._id || item.currentLeadingBidder?._id || item.currentLeadingBidder;
+    const finalAmount = item.winningAmount || item.currentLeadingBid;
+
+    if (!winnerId || !finalAmount) {
+      return res.status(400).json({
+        success: false,
+        message: 'No bids have been placed on this auction yet to accept.',
+      });
+    }
+
+    item.provisionalWinner = winnerId;
+    item.winningAmount = finalAmount;
     item.status = 'Reserved';
     item.sellerDecision = {
       decision: 'Approved',
@@ -758,30 +776,34 @@ const approveBid = async (req, res) => {
     item.reservedAt = new Date();
     await item.save();
 
-    const formattedAmount = formatINR(item.winningAmount || item.currentLeadingBid);
+    const formattedAmount = formatINR(finalAmount);
 
     // Notify provisional winner that item is Reserved
-    if (item.provisionalWinner) {
+    try {
       const buyerNotif = await Notification.create({
-        recipient: item.provisionalWinner._id,
+        recipient: winnerId,
         type: 'ITEM_RESERVED',
-        message: `Great news! The seller approved your winning bid of ${formattedAmount} for "${item.title}". The item is now Reserved for campus handover!`,
+        message: `Great news! The seller accepted your bid of ${formattedAmount} for "${item.title}". The item is now Reserved for campus handover!`,
         auction: item._id,
       });
-      emitToUser(item.provisionalWinner._id, 'notification:new', buyerNotif);
+      emitToUser(winnerId, 'notification:new', buyerNotif);
+    } catch (err) {
+      console.error('Error sending buyer notification:', err);
     }
 
     // Broadcast status change
     emitToAuction(item._id, 'auction:status_changed', {
       auctionId: item._id,
       status: 'Reserved',
+      provisionalWinner: item.provisionalWinner,
+      winningAmount: item.winningAmount,
       sellerDecision: item.sellerDecision,
       reservedAt: item.reservedAt,
     });
 
     res.status(200).json({
       success: true,
-      message: 'Winning bid approved. Item is now Reserved for campus handover.',
+      message: `Bid of ${formattedAmount} accepted! Item is now Reserved for campus handover.`,
       auction: item,
     });
   } catch (error) {
@@ -797,8 +819,10 @@ const approveBid = async (req, res) => {
  */
 const rejectBid = async (req, res) => {
   try {
-    const { reason } = req.body;
-    const item = await Item.findById(req.params.id).populate('provisionalWinner', 'name email');
+    const { reason, rejectAll } = req.body;
+    const item = await Item.findById(req.params.id)
+      .populate('provisionalWinner', 'name email')
+      .populate('currentLeadingBidder', 'name email');
 
     if (!item) {
       return res.status(404).json({ success: false, message: 'Auction not found.' });
@@ -808,15 +832,73 @@ const rejectBid = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Only the seller can reject this bid.' });
     }
 
-    if (item.status !== 'Pending Approval') {
+    if (item.status !== 'Pending Approval' && item.status !== 'Active') {
       return res.status(400).json({
         success: false,
-        message: `Auction must be "Pending Approval" to reject. Current status: ${item.status}`,
+        message: `Auction must be "Active" or "Pending Approval" to reject. Current status: ${item.status}`,
       });
     }
 
-    const rejectionReason = reason ? reason.trim() : 'Seller declined the final bid amount.';
+    const rejectionReason = reason ? reason.trim() : 'Seller declined the bid amount.';
 
+    // Case 1: If auction is Active and seller rejects the single current leading bid
+    if (item.status === 'Active' && !rejectAll) {
+      const highestBid = await Bid.findOne({ auction: item._id }).sort({ amount: -1 });
+
+      if (highestBid) {
+        const rejectedBidderId = highestBid.bidder;
+        const rejectedAmount = formatINR(highestBid.amount);
+
+        await Bid.deleteOne({ _id: highestBid._id });
+
+        const nextHighestBid = await Bid.findOne({ auction: item._id })
+          .populate('bidder', 'name')
+          .sort({ amount: -1 });
+
+        if (nextHighestBid) {
+          item.currentLeadingBid = nextHighestBid.amount;
+          item.currentLeadingBidder = nextHighestBid.bidder._id;
+          item.bidCount = Math.max(0, (item.bidCount || 1) - 1);
+        } else {
+          item.currentLeadingBid = null;
+          item.currentLeadingBidder = null;
+          item.bidCount = 0;
+        }
+
+        await item.save();
+
+        try {
+          const buyerNotif = await Notification.create({
+            recipient: rejectedBidderId,
+            type: 'SELLER_REJECTED',
+            message: `Your bid of ${rejectedAmount} for "${item.title}" was declined by the seller. Reason: ${rejectionReason}`,
+            auction: item._id,
+          });
+          emitToUser(rejectedBidderId, 'notification:new', buyerNotif);
+        } catch (e) {}
+
+        emitToAuction(item._id, 'bid:placed', {
+          auctionId: item._id,
+          currentLeadingBid: item.currentLeadingBid,
+          currentLeadingBidINR: item.currentLeadingBid ? item.currentLeadingBid / 100 : null,
+          bidCount: item.bidCount,
+          minNextBid: item.currentLeadingBid
+            ? item.currentLeadingBid + item.minimumIncrement
+            : item.startingPrice,
+          minNextBidINR: item.currentLeadingBid
+            ? (item.currentLeadingBid + item.minimumIncrement) / 100
+            : item.startingPrice / 100,
+        });
+
+        return res.status(200).json({
+          success: true,
+          message: `Bid of ${rejectedAmount} was rejected. Auction remains active with updated leading bid.`,
+          auction: item,
+        });
+      }
+    }
+
+    // Case 2: Reject entire auction / provisional winner
     item.status = 'Rejected';
     item.sellerDecision = {
       decision: 'Rejected',
@@ -826,15 +908,17 @@ const rejectBid = async (req, res) => {
     item.outcomeReason = rejectionReason;
     await item.save();
 
-    // Notify buyer of rejection
-    if (item.provisionalWinner) {
-      const buyerNotif = await Notification.create({
-        recipient: item.provisionalWinner._id,
-        type: 'SELLER_REJECTED',
-        message: `The seller did not approve the winning bid for "${item.title}". Reason: ${rejectionReason}`,
-        auction: item._id,
-      });
-      emitToUser(item.provisionalWinner._id, 'notification:new', buyerNotif);
+    const targetBuyerId = item.provisionalWinner?._id || item.currentLeadingBidder?._id;
+    if (targetBuyerId) {
+      try {
+        const buyerNotif = await Notification.create({
+          recipient: targetBuyerId,
+          type: 'SELLER_REJECTED',
+          message: `The seller did not approve the bid for "${item.title}". Reason: ${rejectionReason}`,
+          auction: item._id,
+        });
+        emitToUser(targetBuyerId, 'notification:new', buyerNotif);
+      } catch (e) {}
     }
 
     emitToAuction(item._id, 'auction:status_changed', {
@@ -845,7 +929,7 @@ const rejectBid = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: 'Winning bid rejected. Auction outcome recorded.',
+      message: 'Bid rejected. Auction outcome recorded.',
       auction: item,
     });
   } catch (error) {
