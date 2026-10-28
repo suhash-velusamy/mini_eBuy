@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Environment files
+.env
+.env.local
+backend/.env
+
+# Build outputs
+dist/
+build/
+*/dist/
+
+# Database files
+data/
+backend/data/
+*.log
+
+# Operating System files
+.DS_Store
+Thumbs.db
+
+# User Uploads (keep sample svg files)
+backend/uploads/item-*
+

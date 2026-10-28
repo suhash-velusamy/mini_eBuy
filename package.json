@@ -1,0 +1,25 @@
+{
+  "name": "campus-auction",
+  "version": "1.0.0",
+  "description": "Campus Auction - Full-Stack College Marketplace & Timed Auction Platform",
+  "scripts": {
+    "start": "node backend/server.js",
+    "seed": "node backend/scripts/seed.js",
+    "verify": "node backend/scripts/verify-all.js",
+    "backend": "cd backend && npm start",
+    "frontend": "cd frontend && npm run dev",
+    "build": "cd frontend && npm run build"
+  },
+  "keywords": [
+    "campus",
+    "auction",
+    "ebay",
+    "college",
+    "real-time",
+    "bidding",
+    "socketio",
+    "mongodb"
+  ],
+  "author": "Campus Auction Developer",
+  "license": "ISC"
+}
