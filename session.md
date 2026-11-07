@@ -1245,3 +1245,11 @@ Role Perspective Tabs: Toggle between Bidder, Seller, and Admin on the login for
 Role-Based Smart Redirection:
 Logging in as Seller automatically routes directly to /seller-dashboard.
 Logging in as Bidder routes directly to the auction
+
+
+
+
+
+suhashvelu03_db_user|
+IUPxRikKNCYMZ0of
+mongodb+srv://<db_username>:<db_password>@cluster0.rsfwbpv.mongodb.net/

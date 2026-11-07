@@ -108,7 +108,15 @@ const seedDatabase = async () => {
       role: 'admin',
     });
 
+    const studentUser = await User.create({
+      name: 'Suhash V',
+      email: 'suhashv.23cse@kongu.edu',
+      passwordHash,
+      role: 'seller',
+    });
+
     console.log(`[Seed] Users created:
+      - Student:  suhashv.23cse@kongu.edu / ${defaultPassword}
       - Seller:   seller@campus.edu  / ${defaultPassword} (Role: seller)
       - Bidder 1: bidder1@campus.edu / ${defaultPassword} (Role: bidder)
       - Bidder 2: bidder2@campus.edu / ${defaultPassword} (Role: bidder)
