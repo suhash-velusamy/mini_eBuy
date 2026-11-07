@@ -20,9 +20,6 @@ const assistantRoutes = require('./routes/assistantRoutes');
 const app = express();
 const server = http.createServer(app);
 
-// Connect to MongoDB
-connectDB();
-
 // CORS configuration
 const allowedOrigins = [
   process.env.CLIENT_URL || 'http://localhost:5174',
@@ -114,38 +111,51 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Initialize Socket.IO
-initSocket(server);
+// Start server asynchronously after MongoDB connects
+const startServer = async () => {
+  try {
+    // 1. Await database connection first to avoid query buffering timeouts
+    await connectDB();
 
-// Initialize node-cron for auction expiration
-initAuctionScheduler();
+    // 2. Initialize Socket.IO
+    initSocket(server);
 
-const PORT = process.env.PORT || 5000;
-const HOST = process.env.HOST || '0.0.0.0';
+    // 3. Initialize node-cron for auction expiration
+    initAuctionScheduler();
 
-server.on('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    console.error(`\n[Server Error] Port ${PORT} (${HOST}) is already in use by another process.`);
-    console.error(`To resolve this issue:`);
-    console.error(`  1. Kill any existing process on port ${PORT}:`);
-    console.error(`     Run: npm run free-port`);
-    console.error(`     or in PowerShell: Get-Process node | Stop-Process -Force`);
-    console.error(`  2. Or change PORT in backend/.env (e.g. PORT=5001).\n`);
+    const PORT = process.env.PORT || 5000;
+    const HOST = process.env.HOST || '0.0.0.0';
+
+    server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`\n[Server Error] Port ${PORT} (${HOST}) is already in use by another process.`);
+        console.error(`To resolve this issue:`);
+        console.error(`  1. Kill any existing process on port ${PORT}:`);
+        console.error(`     Run: npm run free-port`);
+        console.error(`     or in PowerShell: Get-Process node | Stop-Process -Force`);
+        console.error(`  2. Or change PORT in backend/.env (e.g. PORT=5001).\n`);
+        process.exit(1);
+      } else {
+        console.error('Server error:', err);
+      }
+    });
+
+    server.listen(PORT, HOST, () => {
+      console.log(`=========================================`);
+      console.log(` Campus Auction Backend Server Running   `);
+      console.log(` Port: ${PORT}                           `);
+      console.log(` Host: ${HOST}                           `);
+      console.log(` Local URL: http://localhost:${PORT}      `);
+      console.log(` Client URL: ${process.env.CLIENT_URL || 'http://localhost:5174'} `);
+      console.log(`=========================================`);
+    });
+  } catch (err) {
+    console.error('Failed to start server:', err);
     process.exit(1);
-  } else {
-    console.error('Server error:', err);
   }
-});
+};
 
-server.listen(PORT, HOST, () => {
-  console.log(`=========================================`);
-  console.log(` Campus Auction Backend Server Running   `);
-  console.log(` Port: ${PORT}                           `);
-  console.log(` Host: ${HOST}                           `);
-  console.log(` Local URL: http://localhost:${PORT}      `);
-  console.log(` Client URL: ${process.env.CLIENT_URL || 'http://localhost:5174'} `);
-  console.log(`=========================================`);
-});
+startServer();
 
 // Graceful shutdown
 process.on('SIGINT', () => {
