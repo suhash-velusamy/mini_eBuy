@@ -2,7 +2,7 @@
 
 > A production-grade, 100% dynamic mini eBay platform designed specifically for college campuses. Graduating seniors can list used items (bicycles, calculators, textbooks, lab equipment, laptops, and hostel gear) through timed auctions. Junior students can browse listings, place bids, receive real-time outbid alerts via Socket.IO, and win items fairly with safe on-campus in-person handovers.
 >
-> **100% Fully Dynamic & Zero Hardcoding:** All static and dummy arrays have been eliminated. Every listing, category, public bid history, user profile, notification, and platform metric is fetched and aggregated live from the local MongoDB database.
+> **100% Fully Dynamic & Zero Hardcoding:** All static and dummy arrays have been eliminated. Every listing, category, public bid history, user profile, notification, and platform metric is fetched and aggregated live from MongoDB (supporting both MongoDB Atlas cloud clusters and local MongoDB instances).
 
 ---
 
@@ -11,6 +11,7 @@
 Campus Auction solves the common college problem of passing down valuable academic, technical, and hostel supplies from departing seniors to incoming juniors. 
 
 ### Key System Highlights:
+- **Cloud & Local MongoDB Ready:** Fully integrated with MongoDB Atlas cloud clusters (`mongodb+srv://`) as well as local standalone MongoDB servers (`mongodb://127.0.0.1:27017`).
 - **Unified Student Authentication:** Clean, role-free registration and login. Every registered student account can seamlessly both list items for auction and participate in bidding.
 - **Server-Authoritative Enforcement:** Timers, closing dates, bid increments, and permissions are enforced strictly on the server—never trusting the browser clock.
 - **Active Listing Management:** Sellers can edit their active listings directly from **My Listings** or the listing details page. Pricing and closing time can be updated before bidding starts; once bids are placed, pricing and countdowns are strictly locked to protect bidder commitments.
@@ -37,7 +38,7 @@ Campus Auction solves the common college problem of passing down valuable academ
 ### Backend
 - **Runtime:** Node.js (v20+ / v22+)
 - **Server Framework:** Express.js
-- **Database:** Local MongoDB (`mongodb://127.0.0.1:27017/campus_auction`)
+- **Database:** MongoDB Atlas Cloud Cluster or Local MongoDB (`campus_auction`)
 - **ODM:** Mongoose v8
 - **Real-Time Server:** Socket.IO v4 (authenticated user rooms & public auction channels)
 - **Authentication:** JWT (JSON Web Tokens) with HTTP-only cookies and Bearer headers
@@ -51,11 +52,11 @@ Campus Auction solves the common college problem of passing down valuable academ
 
 ## 3. Environment Variables
 
-### Backend (`backend/.env`)
-| Variable | Default | Purpose |
+### Backend (`backend/.env` / `server/.env`)
+| Variable | Example / Default | Purpose |
 |---|---|---|
 | `PORT` | `5000` | Backend Express API Port |
-| `MONGODB_URI` | `mongodb://127.0.0.1:27017/campus_auction` | Local MongoDB Connection URI |
+| `MONGODB_URI` | `mongodb+srv://<user>:<password>@cluster0.rsfwbpv.mongodb.net/campus_auction?retryWrites=true&w=majority&compressors=zlib` | MongoDB Atlas Cloud URI or local `mongodb://127.0.0.1:27017/campus_auction` |
 | `JWT_SECRET` | `campus_auction_jwt_secret_dev_key_2026` | Secret key for signing JSON Web Tokens |
 | `JWT_EXPIRES_IN` | `7d` | Token expiration duration |
 | `CLIENT_URL` | `http://localhost:5174` | Allowed CORS and Socket.IO Origin |
@@ -64,7 +65,7 @@ Campus Auction solves the common college problem of passing down valuable academ
 | `ANTHROPIC_API_KEY` | *(optional in dev/test)* | Anthropic API key for AI shopping assistant |
 | `ANTHROPIC_MODEL` | `claude-3-5-sonnet-20241022` | Claude model name for assistant proxy |
 
-### Frontend (`frontend/.env`)
+### Frontend (`frontend/.env` / `client/.env`)
 | Variable | Default | Purpose |
 |---|---|---|
 | `VITE_API_URL` | *(empty string for proxy)* | Backend API Base URL |
@@ -126,7 +127,8 @@ Campus Auction solves the common college problem of passing down valuable academ
   - `PATCH /api/auctions/:id/questions/:qId/status` — Seller hide/restore toggle.
 
 ### Phase 5: AI Assistant Tab
-- **Rule:** Natural language shopping assistant proxying Claude with strict safety guardrails.
+- **Rule:** Natural language shopping assistant proxying Claude (or local smart query engine) with strict safety guardrails.
+- **Natural Language Parsing:** Automatically extracts budgets (`under ₹500`, `under 1000`), removes stop-words, and expands campus synonyms (books, calculators, cycles, laptops).
 - **Zero Auto-Bidding:** Assistant tools can only `search_auctions`, `get_auction`, and `propose_bid`. Proposing creates a `PendingAction` and renders a confirmation card; **money is never committed until the student clicks Confirm**.
 - **Privacy:** Never discloses email, phone, or password. Untrusted item content wrapped in `<untrusted_item_content>` delimiters.
 - **Endpoints:**
@@ -141,7 +143,7 @@ Campus Auction solves the common college problem of passing down valuable academ
 
 ```text
 mini_eBuy/
-├── frontend/
+├── frontend/ (client)
 │   ├── public/
 │   │   ├── placeholder.svg       # Local vector fallback for images
 │   │   └── vite.svg
@@ -191,9 +193,9 @@ mini_eBuy/
 │   ├── vite.config.js
 │   ├── tailwind.config.js
 │   └── .env
-├── backend/
+├── backend/ (server)
 │   ├── config/
-│   │   └── db.js                 # Mongoose connection to local MongoDB
+│   │   └── db.js                 # Atlas & local Mongoose connection handler
 │   ├── controllers/
 │   │   ├── authController.js     # Unified registration & login
 │   │   ├── auctionController.js  # Listing CRUD, atomic bidding, proxy bidding, and edit
@@ -232,7 +234,7 @@ mini_eBuy/
 │   ├── utils/
 │   │   └── money.js              # Integer paise <-> INR exact currency conversions
 │   ├── scripts/
-│   │   ├── seed.js               # Database seeder (seed users, 13 listings, bids)
+│   │   ├── seed.js               # Database seeder (seed users, 10 listings, bids)
 │   │   └── verify-all.js         # Automated 10-step full verification suite
 │   ├── test/                     # Automated unit test suites (Phases 1–5 & core rules)
 │   ├── server.js
@@ -244,36 +246,35 @@ mini_eBuy/
 
 ---
 
-## 6. Setup & Execution Instructions (Windows)
+## 6. Setup & Execution Instructions
 
 ### Prerequisites
 1. **Node.js** (v18 or higher) installed. Verify with `node -v`.
-2. **MongoDB** installed locally on your Windows machine (`mongod.exe`).
+2. **MongoDB Database** (either MongoDB Atlas or Local MongoDB):
+   - **Option A (MongoDB Atlas Cloud — Recommended):** Free M0 cluster created on [MongoDB Atlas](https://www.mongodb.com/cloud/atlas).
+   - **Option B (Local MongoDB):** Local `mongod.exe` running on port 27017.
 
 ---
 
-### Step 1: Start Local MongoDB
-If your MongoDB Windows service is running, it listens on port `27017` automatically.
-
-If running standalone without service permissions:
-```powershell
-& "C:\Program Files\MongoDB\Server\8.2\bin\mongod.exe" --dbpath ".\backend\data\db" --bind_ip 127.0.0.1 --port 27017
-```
-
----
-
-### Step 2: Configure Environment Variables
+### Step 1: Configure Environment Variables
 
 **Backend (`backend/.env`):**
 ```env
 PORT=5000
-MONGODB_URI=mongodb://127.0.0.1:27017/campus_auction
+# MongoDB Atlas Connection URI (ensure database name /campus_auction is included):
+MONGODB_URI=mongodb+srv://<username>:<password>@cluster0.rsfwbpv.mongodb.net/campus_auction?retryWrites=true&w=majority&compressors=zlib
+
+# Or if running locally:
+# MONGODB_URI=mongodb://127.0.0.1:27017/campus_auction
+
 JWT_SECRET=campus_auction_jwt_secret_dev_key_2026
 JWT_EXPIRES_IN=7d
 CLIENT_URL=http://localhost:5174
 ALLOWED_EMAIL_DOMAIN=
 MAX_FILE_SIZE_MB=5
 ```
+
+> ⚠️ **Important MongoDB Atlas Tip:** Ensure your current IP is whitelisted under **Network Access** in the MongoDB Atlas dashboard (or set to `0.0.0.0/0` to allow access from any network).
 
 **Frontend (`frontend/.env`):**
 ```env
@@ -283,7 +284,7 @@ VITE_SOCKET_URL=http://localhost:5000
 
 ---
 
-### Step 3: Seed the Database
+### Step 2: Seed the Database
 Populates standard college users, demo listings across all statuses, bids, and watch alerts:
 ```powershell
 cd backend
@@ -292,7 +293,7 @@ npm run seed
 
 ---
 
-### Step 4: Run the Backend Server (Port 5000)
+### Step 3: Run the Backend Server (Port 5000)
 ```powershell
 cd backend
 npm start
@@ -306,14 +307,14 @@ You will see:
  Local URL: http://localhost:5000      
  Client URL: http://localhost:5174 
 =========================================
-[MongoDB] Connected to database: campus_auction @ 127.0.0.1:27017
+[MongoDB] Connected to database: campus_auction @ ac-taukkq7-shard-00-02.rsfwbpv.mongodb.net:27017
 [Auction Service] Performing startup expired auctions check...
 [Auction Service] Cron job registered: checking expired auctions every 10 seconds.
 ```
 
 ---
 
-### Step 5: Run the Frontend Server (Port 5174 / 5173)
+### Step 4: Run the Frontend Server (Port 5174 / 5173)
 In a second PowerShell terminal:
 ```powershell
 cd frontend
@@ -324,7 +325,22 @@ Open your browser to:
 
 ---
 
-## 7. Comprehensive API Reference
+## 7. Pre-Configured Seed Accounts
+
+All seed accounts use the default password `Password123!`:
+
+| Student Name | Email | Password | Role / Capabilities |
+| :--- | :--- | :--- | :--- |
+| **Suhash V** | `suhashv.23cse@kongu.edu` | `Password123!` | Student: full listing and bidding access |
+| **John Seller** (Senior CSE) | `seller@campus.edu` | `Password123!` | Senior Seller: created initial demo listings |
+| **Alice Bidder** (Sophomore ECE) | `bidder1@campus.edu` | `Password123!` | Student Bidder: placed initial leading bids |
+| **Bob Bidder** (Junior Mech) | `bidder2@campus.edu` | `Password123!` | Competitive Bidder: proxy outbid runner |
+| **Charlie Bidder** (Freshman IT) | `bidder3@campus.edu` | `Password123!` | General student buyer |
+| **Campus Admin** (Coordinator) | `admin@campus.edu` | `Password123!` | Campus Administrator |
+
+---
+
+## 8. Comprehensive API Reference
 
 | Method | Endpoint | Description | Auth Required |
 | :--- | :--- | :--- | :--- |
@@ -371,7 +387,7 @@ Open your browser to:
 
 ---
 
-## 8. Complete Verification & Testing
+## 9. Complete Verification & Testing
 
 ### 1. Automated Full Verification Suite (`scripts/verify-all.js`)
 Run the comprehensive 10-step end-to-end verification script against the live database:
@@ -387,7 +403,7 @@ node backend/scripts/verify-all.js
 
 [1/10] MongoDB Connection: OK
 [2/10] Seed Users & Bcrypt Password Hashing: PASS
-[3/10] Sample Auction Listings Count: PASS (13 auctions found across statuses)
+[3/10] Sample Auction Listings Count: PASS (10 auctions found across statuses)
 [4/10] Phase 1: Verifying Last-Minute Extensions...
        - Last-minute bid extension (+60s) & extensionCount increment: PASS
 [5/10] Phase 2: Verifying Automatic Proxy Bidding Engine...
@@ -403,39 +419,33 @@ node backend/scripts/verify-all.js
        - Seller Confirmed Handover: Status -> Sold: PASS
 [10/10] Testing Dynamic Categories & Platform Stats Calculation...
         - Dynamic Categories in DB: PASS (6 distinct categories found)
-        - Live Platform Metrics: PASS (4 active, 5 sold, 8 registered users)
+        - Live Platform Metrics: PASS (5 active, 2 sold, 6 registered users)
 
 ====================================================
   ALL 10 VERIFICATION CHECKS COMPLETED SUCCESSFULLY! 
 ====================================================
 ```
 
-### 2. Unit Test Suites (60 Automated Tests)
-Run all Node.js test runner suites:
-```powershell
-cd backend
-node --test --test-concurrency=1 test/*.test.js
-```
-**Test Results:** `60 tests passed, 0 failed, 3 suites passed`.
-
-### 3. Frontend Production Build
+### 2. Frontend Production Build
 Verify zero syntax, JSX, or bundling errors:
 ```powershell
 cd frontend
 npx vite build
 ```
-**Build Result:** `✓ 1659 modules transformed. Built in ~6.5s`.
+**Build Result:** `✓ 1659 modules transformed. Built in ~9.8s`.
 
 ---
 
-## 9. Troubleshooting & FAQ
+## 10. Troubleshooting & FAQ
 
-### 1. MongoDB Connection Refused (`connect ECONNREFUSED 127.0.0.1:27017`)
-- **Cause:** Local MongoDB instance is not currently running.
-- **Solution:** Start `mongod.exe` manually:
-  ```powershell
-  & "C:\Program Files\MongoDB\Server\8.2\bin\mongod.exe" --dbpath ".\backend\data\db" --bind_ip 127.0.0.1 --port 27017
-  ```
+### 1. MongoDB Atlas Connection Error (`Could not connect to any servers in your MongoDB Atlas cluster`)
+- **Cause:** Your current client IP address is not whitelisted in the MongoDB Atlas firewall.
+- **Solution:** 
+  1. Open the [MongoDB Atlas Dashboard](https://cloud.mongodb.com).
+  2. In the left navigation, click **Network Access**.
+  3. Click **Add IP Address** and select **Allow Access from Anywhere (`0.0.0.0/0`)** or click **Add Current IP Address**.
+  4. Ensure your `MONGODB_URI` in `.env` includes the `/campus_auction` database name:
+     `mongodb+srv://<user>:<password>@cluster0.rsfwbpv.mongodb.net/campus_auction?retryWrites=true&w=majority&compressors=zlib`
 
 ### 2. Port Already in Use (`EADDRINUSE: port 5000` or `5174`)
 - **Find process using port 5000:**
